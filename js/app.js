@@ -1,5 +1,5 @@
 import * as DB from './db.js';
-import { scanVideo, probeVideo, processSignals } from './analysis.js';
+import { scanVideo, probeVideo, processSignals, findGoals } from './analysis.js';
 
 // ============================================================ helpers
 const $ = (s, r = document) => r.querySelector(s);
@@ -285,7 +285,7 @@ function scanView(m) {
       <div class="bar"><i id="sbar" style="width:0%"></i></div>
       <p id="seta" class="lead">Starting&hellip;</p>
       <canvas id="spark" width="480" height="64" aria-hidden="true"></canvas>
-      <p class="hint">Keep this screen open and awake. The scan is silent and nothing leaves your device.</p>
+      <p class="hint">Keep this tab in front and the screen awake. If you switch away, the scan pauses until you return. The scan is silent and nothing leaves your device.</p>
       <button class="ghost wide" id="cancel">Cancel</button>
     </section></main>`;
   $('#cancel').onclick = () => S.scanning && S.scanning.ctrl.abort();
@@ -305,6 +305,7 @@ async function startScan(m) {
         const left = p.frac > 0.02 ? p.elapsed / p.frac * (1 - p.frac) : null;
         if ($('#spct')) {
           $('#spct').textContent = pct + '%'; $('#sbar').style.width = pct + '%';
+          if (p.hidden) $('#seta').textContent = 'Paused: come back to this tab and the scan carries on.'; else
           $('#seta').textContent = `${clock(p.t)} of ${clock(p.duration)} scanned` + (left != null ? ` · about ${Math.max(1, Math.ceil(left / 60))} min left` : '');
           drawSpark(sc.spark);
         }
@@ -315,6 +316,8 @@ async function startScan(m) {
     m.events = out.events; m.curves = out.curves; m.half = out.half; m.sens = 'normal';
     await DB.saveMatch(m);
     S.scanning = null;
+    m.frameCoverage = res.frameCoverage; await DB.saveMatch(m);
+    if (res.frameCoverage != null && res.frameCoverage < 0.9) setTimeout(() => toast('Part of the video was not scanned properly. Keep this tab in front and scan again.'), 2600);
     toast(res.partial ? `Scan stopped early at ${clock(res.coveredTo)}` : `Found ${m.events.length} moments to review`);
     go(`#/match/${m.id}/moments`);
   } catch (err) {
@@ -441,6 +444,42 @@ function applySensitivity(m, key) {
   m.events = merged; m.sens = key;
 }
 
+function goalBox(m) {
+  return `<section class="card goalbox" id="goalBox"><h3>Find the goals</h3>
+    <p class="note">Enter the final score and Pitchside picks the most goal-like moments (a long roar, then a lull and a restart whistle). You then just tap who scored.</p>
+    <div class="fs"><label>${esc(m.us)}<input id="fsUs" type="number" inputmode="numeric" min="0" max="30" value="${m.finalUs ?? ''}"></label>
+      <span class="dash">&ndash;</span>
+      <label>${esc(m.them)}<input id="fsThem" type="number" inputmode="numeric" min="0" max="30" value="${m.finalThem ?? ''}"></label></div>
+    <button class="primary wide" id="findGoals">Find goals</button><p class="note" id="goalStatus"></p></section>`;
+}
+function updateGoalStatus(m) {
+  const el = $('#goalStatus'); if (!el) return;
+  const g = m.events.filter(e => e.type === 'goal'), us = g.filter(e => e.side === 'us').length, them = g.filter(e => e.side === 'them').length;
+  const open = g.filter(e => !e.side).length;
+  if (!g.length) { el.textContent = ''; return; }
+  const fin = m.finalUs != null && m.finalThem != null ? ` (final score ${m.finalUs}\u2013${m.finalThem})` : '';
+  el.textContent = `Goals marked: ${m.us} ${us}, ${m.them} ${them}${open ? ` · ${open} still to assign` : ''}${fin}`;
+}
+function runFindGoals(m) {
+  const a = parseInt($('#fsUs').value, 10), b = parseInt($('#fsThem').value, 10);
+  if (!(a >= 0) || !(b >= 0)) return toast('Enter the final score first');
+  if (a + b === 0) return toast('0\u20130, so no goals to find');
+  m.finalUs = a; m.finalThem = b;
+  // clear earlier guesses the user has not confirmed
+  m.events = m.events.filter(e => !(e.guess && e.created && !e.side));
+  for (const e of m.events) if (e.guess && !e.side) { e.type = null; e.guess = false; }
+  const cands = findGoals(m.raw, m.duration, { n: a + b, halfTime: m.halfTime, sampleFps: 2 });
+  let id = Math.max(0, ...m.events.map(x => x.id));
+  for (const c of cands) {
+    const near = m.events.find(e => Math.abs(e.time - c.time) < 25);
+    if (near) { if (!near.type || near.guess) { near.type = 'goal'; near.guess = true; near.label = 'Likely goal'; near.time = c.time; near.start = Math.max(0, c.time - 15); near.end = Math.min(m.duration, c.time + 12); } }
+    else m.events.push({ id: ++id, time: c.time, start: Math.max(0, c.time - 15), end: Math.min(m.duration, c.time + 12), score: c.score, label: 'Likely goal', type: 'goal', side: null, guess: true, created: true });
+  }
+  m.events.sort((x, y) => x.time - y.time); m.events.forEach((e, i) => e.id = i + 1);
+  DB.saveMatch(m); renderMoments(m); updateGoalStatus(m);
+  toast(`Marked ${cands.length} likely goals. Tap who scored on each.`);
+  const first = $('.mom.tagged'); if (first) first.scrollIntoView({ behavior: 'smooth', block: 'center' });
+}
 function momentsTab(m) {
   const has = haveFile(m);
   $('#tabBody').innerHTML = `
@@ -452,16 +491,18 @@ function momentsTab(m) {
     <div class="actions">
       <button class="ghost" id="addMoment" ${has ? '' : 'disabled'}>+ Moment at <b id="addAt">0:00</b></button>
       <button class="primary sm" id="playReel">Play highlights</button></div>
+    ${m.raw ? goalBox(m) : ''}
     ${m.raw ? `<div class="fld inline"><span>Sensitivity</span>${seg('sensSeg', [['fewer', 'Fewer'], ['normal', 'Normal'], ['more', 'More']], m.sens || 'normal')}</div>` : ''}
     <div id="momentList" class="moms"></div>`;
-  renderMoments(m);
+  renderMoments(m); updateGoalStatus(m);
+  const fg = $('#findGoals'); if (fg) fg.onclick = () => runFindGoals(m);
   const vf = $('#vfile'); if (vf) vf.onchange = e => attachFile(m, e.target.files[0], () => momentsTab(m));
   const list = $('#momentList');
   list.onclick = ev => {
     const card = ev.target.closest('.mom'); if (!card) return;
     const e = m.events.find(x => x.id === +card.dataset.id); if (!e) return;
     const sideBtn = ev.target.closest('[data-side]'), actEl = ev.target.closest('[data-act]');
-    if (sideBtn) { e.side = sideBtn.dataset.side; DB.saveMatch(m); card.outerHTML = momCard(e, S.clipId === e.id); return; }
+    if (sideBtn) { e.side = sideBtn.dataset.side; if (e.guess) e.label = 'Goal'; DB.saveMatch(m); card.outerHTML = momCard(e, S.clipId === e.id); updateGoalStatus(m); return; }
     if (!actEl) return;
     if (actEl.dataset.act === 'play') { S.reel = null; updateReelBar(); playClip(e); }
     else if (actEl.dataset.act === 'skip') {

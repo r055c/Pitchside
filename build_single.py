@@ -4,7 +4,7 @@ db=re.sub(r'^export ','',r('js/db.js'),flags=re.M)
 an=re.sub(r'^export ','',r('js/analysis.js'),flags=re.M)
 app=re.sub(r"^import .*$\n",'',r('js/app.js'),flags=re.M)
 js=("const DB=(()=>{\n"+db+"\nreturn {allMatches,getMatch,saveMatch,deleteMatch,newId};})();\n"
-    "const {scanVideo,probeVideo,processSignals}=(()=>{\n"+an+"\nreturn {DEFAULTS,percentile,processSignals,probeVideo,scanVideo};})();\n"+app)
+    "const {scanVideo,probeVideo,processSignals,findGoals}=(()=>{\n"+an+"\nreturn {DEFAULTS,percentile,processSignals,probeVideo,scanVideo,findGoals};})();\n"+app)
 js=js.replace("</script>","<\\/script>")
 h=r('index.html')
 h=re.sub(r'<link rel="manifest"[^>]*>\n?','',h)

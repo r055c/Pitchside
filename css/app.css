@@ -177,3 +177,9 @@ label.btn.filebtn{border-style:solid;background:transparent;color:var(--ink)}
   font-size:14px;font-weight:600;opacity:0;pointer-events:none;transition:.25s;max-width:90vw;text-align:center;z-index:60}
 #toast.show{opacity:1;transform:translate(-50%,0)}
 @media (prefers-reduced-motion:reduce){*{transition:none!important}}
+
+.goalbox h3{margin:0 0 4px;font-size:16px}
+.goalbox .fs{display:flex;align-items:flex-end;gap:10px;margin:10px 0}
+.goalbox .fs label{flex:1;display:flex;flex-direction:column;gap:4px;font-size:13px;font-weight:700;min-width:0}
+.goalbox .fs input{font:inherit;font-size:22px;font-weight:800;text-align:center;padding:8px;border:1.5px solid var(--line,#d8d3c6);border-radius:12px;background:var(--card,#fff);color:inherit;width:100%;box-sizing:border-box}
+.goalbox .fs .dash{padding-bottom:12px;font-weight:800}

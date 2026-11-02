@@ -143,6 +143,41 @@ export function processSignals(raw, duration, o = {}) {
   return { events, curves, hasAudio, half };
 }
 
+// ---------------------------------------------------------------- goal finder
+// A goal usually looks like: a sustained crowd roar, then a lull while players celebrate and walk back,
+// then a restart whistle from the centre circle. Score every moment for that pattern and return the best n.
+export function findGoals(raw, duration, { n = 7, halfTime = 0, sampleFps = 2, minGap = 75 } = {}) {
+  if (!raw || !raw.loud) return [];
+  const fps = sampleFps, N = Math.min(raw.loud.length, Math.ceil(duration * fps));
+  const sl = a => Float64Array.from(a).subarray(0, N);
+  const loudz = smooth(rz(sl(raw.loud)), 3), resz = smooth(rz(sl(raw.resid)), 5), whz = rz(sl(raw.whistle));
+  const idx = s => Math.max(0, Math.min(N - 1, Math.round(s * fps)));
+  const mean = (a, s0, s1) => { const i0 = idx(s0), i1 = Math.max(i0 + 1, idx(s1)); let t = 0; for (let i = i0; i < i1; i++) t += a[i]; return t / (i1 - i0); };
+  const maxOf = (a, s0, s1) => { let m = -Infinity; for (let i = idx(s0); i <= idx(s1); i++) m = Math.max(m, a[i]); return m; };
+  const score = new Float64Array(N);
+  for (let i = 0; i < N; i++) {
+    const t = i / fps;
+    const roar = mean(loudz, t, t + 12);
+    const lull = -Math.max(-3, Math.min(3, mean(resz, t + 10, t + 40)));
+    const rest = Math.min(6, Math.max(0, maxOf(whz, t + 15, t + 60)));
+    score[i] = roar + 0.35 * lull + 0.12 * rest;
+  }
+  const blocked = t => t < 60 || t > duration - 60 || (halfTime > 0 && Math.abs(t - halfTime) < 60);
+  const order = Array.from(score.keys()).sort((a, b) => score[b] - score[a]);
+  const out = [];
+  for (const i of order) {
+    const t = i / fps;
+    if (blocked(t) || out.length >= n * 3) { if (out.length >= n * 3) break; continue; }
+    if (out.every(o => Math.abs(o.t0 - t) >= minGap)) out.push({ t0: t, s: score[i] });
+  }
+  // snap each candidate to where the roar actually starts (the loudest second just before the window)
+  return out.map(o => {
+    let bi = idx(o.t0), bv = -Infinity;
+    for (let i = idx(o.t0 - 4); i <= idx(o.t0 + 8); i++) if (loudz[i] > bv) { bv = loudz[i]; bi = i; }
+    return { time: bi / fps, score: Math.round(o.s * 100) / 100 };
+  }).slice(0, n);
+}
+
 // ---------------------------------------------------------------- frame comparison (pan + leftover motion)
 const FW = 160, FH = 90;
 function compareFrames(prev, cur) {
@@ -203,13 +238,14 @@ export async function scanVideo(file, { rate = 4, sampleFps = 2, onProgress = ()
   let wake = null;
   const cleanup = () => {
     clearInterval(tAudio); clearInterval(tProg); clearInterval(tFrame);
+    if (onVis) document.removeEventListener('visibilitychange', onVis);
     try { v.pause(); } catch (_) {}
     v.removeAttribute('src'); try { v.load(); } catch (_) {}
     v.remove(); URL.revokeObjectURL(url);
     if (ac) try { ac.close(); } catch (_) {}
     if (wake) try { wake.release(); } catch (_) {}
   };
-  let tAudio = 0, tProg = 0, tFrame = 0;
+  let tAudio = 0, tProg = 0, tFrame = 0, onVis = null;
 
   try {
     await new Promise((res, rej) => {
@@ -275,7 +311,15 @@ export async function scanVideo(file, { rate = 4, sampleFps = 2, onProgress = ()
     v.onended = () => finish('ended');
     v.onerror = () => finish('error');
     if (signal) signal.addEventListener('abort', () => finish('abort'));
-    document.addEventListener('visibilitychange', () => { if (!document.hidden && !finished && v.paused) v.play().catch(() => {}); });
+    // Browsers stop delivering video frames to hidden tabs, which would leave holes in the scan.
+    // So: pause while the tab is hidden, carry on when it is back.
+    let hiddenFor = 0, pausedByUs = false;
+    onVis = () => {
+      if (finished) return;
+      if (document.hidden) { pausedByUs = true; try { v.pause(); } catch (_) {} }
+      else if (pausedByUs) { pausedByUs = false; hiddenFor++; v.play().catch(() => {}); }
+    };
+    document.addEventListener('visibilitychange', onVis);
     try { if (navigator.wakeLock) wake = await navigator.wakeLock.request('screen'); } catch (_) {}
 
     v.playbackRate = rate; v.preservesPitch = true;
@@ -284,12 +328,12 @@ export async function scanVideo(file, { rate = 4, sampleFps = 2, onProgress = ()
     let lastT = -1, stalled = 0;
     tProg = setInterval(() => {
       const ct = v.currentTime;
-      if (Math.abs(ct - lastT) < 0.01) stalled += 0.4; else stalled = 0;
+      if (document.hidden) { stalled = 0; lastT = ct; } else if (Math.abs(ct - lastT) < 0.01) stalled += 0.4; else stalled = 0;
       lastT = ct;
-      if (stalled >= 15 && v.paused) v.play().catch(() => {});
+      if (stalled >= 15 && v.paused && !document.hidden) v.play().catch(() => {});
       if (stalled >= 45) finish('stalled');
       if (ct >= duration - 0.3) finish('ended');
-      onProgress({ frac: Math.min(1, ct / duration), t: ct, duration, elapsed: (performance.now() - t0) / 1000, resid: lastResid, bin: lastBin });
+      onProgress({ hidden: document.hidden, frac: Math.min(1, ct / duration), t: ct, duration, elapsed: (performance.now() - t0) / 1000, resid: lastResid, bin: lastBin });
     }, 400);
 
     const why = await ended;
@@ -306,11 +350,13 @@ export async function scanVideo(file, { rate = 4, sampleFps = 2, onProgress = ()
       if (loudN[i]) { loud[i] = 10 * Math.log10(loudSq[i] / loudN[i] + 1e-12); hasA[i] = 1; }
       if (isFinite(whis[i])) { whistle[i] = whis[i]; hasW[i] = 1; }
     }
+    let withFrames = 0; for (let i = 0; i < n; i++) withFrames += hasF[i];
+    const frameCoverage = withFrames / Math.max(1, n);
     fillGaps(pan, hasF, 0); fillGaps(resid, hasF, 0);
     if (anyAudio) { fillGaps(loud, hasA, -80); fillGaps(whistle, hasW, 0); }
     const r3 = a => Array.from(a.subarray(0, n), x => Math.round(x * 1000) / 1000);
     return {
-      duration, partial, coveredTo: covered, hasAudio: !!anyAudio, sampleFps,
+      duration, partial, coveredTo: covered, hasAudio: !!anyAudio, sampleFps, frameCoverage,
       raw: { pan: r3(pan), resid: r3(resid), loud: anyAudio ? r3(loud) : null, whistle: anyAudio ? r3(whistle) : null }
     };
   } finally { cleanup(); }
