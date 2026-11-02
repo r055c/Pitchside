@@ -632,17 +632,33 @@ function sheet(title, items) {
 function wireMenu(m) {
   const b = $('#menuBtn'); if (!b) return;
   b.onclick = () => sheet(`${m.us} v ${m.them}`, [
-    ...(m.events ? [{ label: 'Export match data (.json)', fn: () => exportMatch(m) }] : []),
+    ...(m.events ? [{ label: 'Export match data (.json)', fn: () => exportMatch(m) }, { label: 'Copy match data (if export is blocked)', fn: () => copyMatch(m) }] : []),
     ...(m.events && haveFile(m) ? [{ label: 'Scan again', fn: () => { m.events = null; m.curves = null; m.raw = null; DB.saveMatch(m).then(() => go(`#/match/${m.id}`)); } }] : []),
     { label: 'Delete this match', danger: true, fn: async () => { if (confirm('Delete this match and its tags from this device?')) { await DB.deleteMatch(m.id); toast('Match deleted'); go('#/'); } } },
   ]);
 }
 async function exportMatch(m) {
-  const blob = new Blob([JSON.stringify(m)], { type: 'application/json' });
-  const f = new File([blob], `${slug(m.us)}-v-${slug(m.them)}.json`, { type: 'application/json' });
-  if (navigator.canShare && navigator.canShare({ files: [f] })) { try { await navigator.share({ files: [f], title: 'Pitchside match' }); } catch (_) {} return; }
-  const a = document.createElement('a'); a.href = URL.createObjectURL(blob); a.download = f.name; a.click();
-  setTimeout(() => URL.revokeObjectURL(a.href), 2000);
+  const text = JSON.stringify(m);
+  const blob = new Blob([text], { type: 'application/json' });
+  const name = `${slug(m.us)}-v-${slug(m.them)}.json`;
+  const f = new File([blob], name, { type: 'application/json' });
+  // share sheet only on phones/tablets; laptops download directly
+  const touch = navigator.maxTouchPoints > 1 && /Android|iPhone|iPad|Mobile/i.test(navigator.userAgent);
+  if (touch && navigator.canShare && navigator.canShare({ files: [f] })) { try { await navigator.share({ files: [f], title: 'Pitchside match' }); return; } catch (e) { if (e && e.name === 'AbortError') return; } }
+  const a = document.createElement('a'); a.href = URL.createObjectURL(blob); a.download = name; a.style.display = 'none';
+  document.body.appendChild(a); a.click();
+  setTimeout(() => { a.remove(); URL.revokeObjectURL(a.href); }, 4000);
+  toast(`Saved ${name} to your Downloads`);
+}
+async function copyMatch(m) {
+  const text = JSON.stringify(m);
+  try { await navigator.clipboard.writeText(text); toast('Match data copied. Paste it into a text file or message.'); }
+  catch (_) {
+    const ta = document.createElement('textarea'); ta.value = text; ta.style.cssText = 'position:fixed;left:0;top:0;opacity:0';
+    document.body.appendChild(ta); ta.select();
+    let ok = false; try { ok = document.execCommand('copy'); } catch (__) {}
+    ta.remove(); toast(ok ? 'Match data copied. Paste it into a text file or message.' : 'Could not copy. Try Export instead.');
+  }
 }
 function seg(id, opts, cur) {
   return `<div class="seg" id="${id}" role="group">${opts.map(([v, l]) => `<button type="button" data-v="${v}" class="${String(v) === String(cur) ? 'on' : ''}">${l}</button>`).join('')}</div>`;
