@@ -520,6 +520,9 @@ async function scanVideo(file, { rate = 4, sampleFps = 2, onProgress = () => {},
     // ---- frame sampling
     const cv = document.createElement('canvas'); cv.width = FW; cv.height = FH;
     const ctx = cv.getContext('2d', { willReadFrequently: true });
+    // keep a small greyscale thumbnail every 4 s of match time so kick-offs can be recognised later
+    const TW = 80, TH = 45, TSTEP = Math.round(sampleFps * 4), TSZ = TW * TH;
+    const thumbs = new Uint8Array((Math.ceil(N / TSTEP) + 1) * TSZ);
     let prev = null, lastBin = -1, lastResid = 0;
     const grab = () => {
       ctx.drawImage(v, 0, 0, FW, FH);
@@ -533,6 +536,12 @@ async function scanVideo(file, { rate = 4, sampleFps = 2, onProgress = () => {},
       if (b <= lastBin || b >= N) return;
       const g = grab();
       if (prev) { const r = compareFrames(prev, g); pan[b] = r.pan; resid[b] = r.resid; lastResid = r.resid; }
+      if (b % TSTEP === 0) {
+        const o = (b / TSTEP) * TSZ;
+        for (let y = 0; y < TH; y++) for (let x = 0; x < TW; x++) {
+          const i = 2 * y * FW + 2 * x; thumbs[o + y * TW + x] = (g[i] + g[i + 1] + g[i + FW] + g[i + FW + 1]) / 4;
+        }
+      }
       hasF[b] = 1; prev = g; lastBin = b;
     };
     if ('requestVideoFrameCallback' in v) {
@@ -592,9 +601,11 @@ async function scanVideo(file, { rate = 4, sampleFps = 2, onProgress = () => {},
     fillGaps(pan, hasF, 0); fillGaps(resid, hasF, 0);
     if (anyAudio) { fillGaps(loud, hasA, -80); fillGaps(whistle, hasW, 0); }
     const r3 = a => Array.from(a.subarray(0, n), x => Math.round(x * 1000) / 1000);
+    let b64 = ''; for (let i = 0; i < thumbs.length; i += 8192) b64 += String.fromCharCode.apply(null, thumbs.subarray(i, i + 8192));
+    const thumbPack = { w: TW, h: TH, step: TSTEP, fps: sampleFps, b64: btoa(b64) };
     return {
       duration, partial, coveredTo: covered, hasAudio: !!anyAudio, sampleFps, frameCoverage,
-      raw: { pan: r3(pan), resid: r3(resid), loud: anyAudio ? r3(loud) : null, whistle: anyAudio ? r3(whistle) : null }
+      raw: { pan: r3(pan), resid: r3(resid), loud: anyAudio ? r3(loud) : null, whistle: anyAudio ? r3(whistle) : null, thumbs: thumbPack }
     };
   } finally { cleanup(); }
 }
