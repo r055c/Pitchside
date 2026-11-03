@@ -194,3 +194,5 @@ label.btn.filebtn{border-style:solid;background:transparent;color:var(--ink)}
 .sheet.wide{max-width:760px;width:calc(100% - 24px);max-height:92vh;overflow:auto}
 .markwrap{background:#000;border-radius:10px;overflow:hidden;margin:8px 0}.markwrap canvas{display:block;width:100%;height:auto;cursor:crosshair}
 .sheet select{font:inherit;padding:10px;border-radius:12px;border:1.5px solid var(--line,#d8d3c6);background:var(--card,#fff);color:inherit}
+
+a.dl{display:flex;align-items:center;justify-content:center;gap:8px;text-decoration:none}

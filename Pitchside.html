@@ -209,6 +209,8 @@ label.btn.filebtn{border-style:solid;background:transparent;color:var(--ink)}
 .markwrap{background:#000;border-radius:10px;overflow:hidden;margin:8px 0}.markwrap canvas{display:block;width:100%;height:auto;cursor:crosshair}
 .sheet select{font:inherit;padding:10px;border-radius:12px;border:1.5px solid var(--line,#d8d3c6);background:var(--card,#fff);color:inherit}
 
+a.dl{display:flex;align-items:center;justify-content:center;gap:8px;text-decoration:none}
+
 </style>
 </head>
 <body>
@@ -1003,10 +1005,34 @@ function sheet(title, items) {
 function wireMenu(m) {
   const b = $('#menuBtn'); if (!b) return;
   b.onclick = () => sheet(`${m.us} v ${m.them}`, [
+    ...(m.events ? [{ label: 'Download match data (.csv)', fn: () => downloadMatchData(m) }] : []),
     ...(m.events ? [{ label: 'Export match data (.json)', fn: () => exportMatch(m) }, { label: 'Copy match data (if export is blocked)', fn: () => copyMatch(m) }] : []),
     ...(m.events && haveFile(m) ? [{ label: 'Scan again', fn: () => { m.events = null; m.curves = null; m.raw = null; DB.saveMatch(m).then(() => go(`#/match/${m.id}`)); } }] : []),
     { label: 'Delete this match', danger: true, fn: async () => { if (confirm('Delete this match and its tags from this device?')) { await DB.deleteMatch(m.id); toast('Match deleted'); go('#/'); } } },
   ]);
+}
+function matchCsv(m) {
+  const q = v => { v = String(v ?? ''); return /[",\n]/.test(v) ? '"' + v.replace(/"/g, '""') + '"' : v; };
+  const row = (...c) => c.map(q).join(',');
+  const st = stats(m), g = goalsOf(m);
+  const out = [row('Match', `${m.us} v ${m.them}`), row('Date', m.date || ''),
+    row('Score (from tagged goals)', `${st.us.goals}-${st.them.goals}`), '', row('Stat', m.us, m.them),
+    row('Goals', st.us.goals, st.them.goals), row('Shots', st.us.shots, st.them.shots), row('Shots on target', st.us.sot, st.them.sot),
+    row('Corners', st.us.corners, st.them.corners), row('Saves', st.us.saves, st.them.saves), row('Fouls', st.us.fouls, st.them.fouls), '',
+    row('Video time', 'Event', 'Team', 'Score after')];
+  const ev = (m.events || []).filter(e => e.type && e.type !== 'skip').sort((a, b) => a.time - b.time);
+  for (const e of ev) {
+    const sc = e.type === 'goal' && e.side ? (() => { const r = scoreAt(m, e.time, true); return `${r.us}-${r.them}`; })() : '';
+    out.push(row(clock(e.time), TYPES[e.type] ? TYPES[e.type].label : e.type, e.side ? (e.side === 'us' ? m.us : m.them) : '', sc));
+  }
+  return '\uFEFF' + out.join('\r\n') + '\r\n';
+}
+function downloadMatchData(m) {
+  const blob = new Blob([matchCsv(m)], { type: 'text/csv;charset=utf-8' });
+  const name = `${slug(m.us)}-v-${slug(m.them)}-match-data.csv`;
+  const a = document.createElement('a'); a.href = URL.createObjectURL(blob); a.download = name; a.style.display = 'none';
+  document.body.appendChild(a); a.click(); setTimeout(() => { a.remove(); URL.revokeObjectURL(a.href); }, 4000);
+  toast(`Saved ${name} to your Downloads`);
 }
 async function exportMatch(m) {
   const text = JSON.stringify(m);
@@ -1318,7 +1344,9 @@ function summaryTab(m) {
       <div class="derived"><div><b>${pct(st.us.goals, st.us.shots)}</b><span>Our conversion</span></div><div><b>${pct(st.us.sot, st.us.shots)}</b><span>Our accuracy</span></div>
       <div><b>${pct(st.them.goals, st.them.shots)}</b><span>Their conversion</span></div></div>
       <p class="note">Built from the ${tagged} of ${total} moments you've tagged. A save counts as a shot on target for the other side.</p></section>
+    <button class="ghost wide" id="dlData">&#11015; Download match data (.csv)</button>
     <a class="primary" href="#/match/${m.id}/moments">${tagged < total ? 'Review moments' : 'Play highlights'}</a>`;
+  $('#dlData').onclick = () => downloadMatchData(m);
   if ($('#chart')) $('#chart').onclick = ev => {
     const g = ev.target.closest('.mk'); if (!g) return;
     S.pendingPlay = +g.dataset.id; go(`#/match/${m.id}/moments`);
@@ -1463,9 +1491,23 @@ function updateVidInfo(m) {
   el.textContent = t;
   const b = $('#makeVideo'); if (b) b.disabled = !clips.length || !haveFile(m);
 }
+function videoResultCard(m) {
+  const v = S.video; if (!v || v.matchId !== m.id) return '';
+  const mb = (v.blob.size / 1048576).toFixed(1);
+  return `<section class="card" id="vidResult"><h3>Your highlights video</h3>
+    <p class="note">${v.clips} clip${v.clips === 1 ? '' : 's'}, ${clock(v.seconds)} long, ${v.ext.toUpperCase()} file, ${mb} MB. Made ${esc(v.when)}. It stays here until you close or reload the app, so download it now.</p>
+    <video controls playsinline preload="metadata" src="${v.url}" style="width:100%;border-radius:12px;margin:8px 0"></video>
+    <a class="primary wide dl" id="dlVideo" href="${v.url}" download="${esc(v.name)}">&#11015; Download highlights</a>
+    ${v.canShare ? '<button class="ghost wide" id="shareVideo">Share&hellip;</button>' : ''}
+    <button class="ghost wide" id="againVideo">Make it again</button></section>`;
+}
+function wireVideoResult(m) {
+  const sh = $('#shareVideo'); if (sh) sh.onclick = () => navigator.share({ files: [new File([S.video.blob], S.video.name, { type: S.video.blob.type })], title: `${m.us} v ${m.them}` }).catch(() => {});
+  const ag = $('#againVideo'); if (ag) ag.onclick = () => runExport(m);
+}
 function highlightCards(m) {
   const has = haveFile(m);
-  return `<section class="card" id="vidCard"><h3>Highlights video</h3>
+  return `<div id="vidResultWrap">${videoResultCard(m)}</div><section class="card" id="vidCard"><h3>Highlights video</h3>
     <p class="note" id="vidInfo"></p>
     <div class="fld"><span>What to include</span>${seg('vidMode', [['all', 'Goals + highlights'], ['goals', 'Goals only']], m.vidMode || 'all')}</div>
     <div class="fld"><span>Seconds around each goal</span><div class="fs"><label>Before<input id="preGoal" type="number" min="3" max="60" inputmode="numeric" value="${m.preGoal ?? 10}"></label>
@@ -1486,7 +1528,7 @@ function wireHighlightCards(m) {
   wireSeg('vidMode', v => { m.vidMode = v; DB.saveMatch(m); updateVidInfo(m); });
   const ag = $('#addGoals'); if (ag) ag.onclick = () => addGoalsFromText(m);
   const mv = $('#makeVideo'); if (mv) mv.onclick = () => runExport(m);
-  updateVidInfo(m);
+  wireVideoResult(m); updateVidInfo(m);
 }
 async function runExport(m) {
   if (!haveFile(m)) return needVideo();
@@ -1508,18 +1550,14 @@ async function runExport(m) {
       clips, us: m.us, them: m.them, title: 'Highlights', dateText: fmtDate(m.date), finalScore: fin, signal: ctrl.signal,
       onProgress: p => { const b = $('#xbar'); if (b) { b.style.width = Math.round(p.frac * 100) + '%'; $('#xtxt').textContent = `${Math.round(p.frac * 100)}% · ${clock(p.done)} of ${clock(p.total)}. Keep this tab in front.`; } },
     });
-    if (S.lastVideoUrl) URL.revokeObjectURL(S.lastVideoUrl);
-    S.lastVideoUrl = URL.createObjectURL(res.blob);
+    if (S.video && S.video.url) URL.revokeObjectURL(S.video.url);
     const name = `${slug(m.us)}-v-${slug(m.them)}-highlights.${res.ext}`;
-    const canShare = navigator.canShare && navigator.canShare({ files: [new File([res.blob], name, { type: res.mime })] }) && navigator.maxTouchPoints > 1;
-    if (!$('#xdone')) return;
-    $('#xbar').style.width = '100%'; $('#xtxt').textContent = `Done. ${clock(res.seconds)} long${res.hasAudio ? '' : ' (no sound)'}.`;
-    $('#xdone').innerHTML = `<video controls playsinline src="${S.lastVideoUrl}" style="width:100%;border-radius:12px;margin:8px 0"></video>
-      <a class="primary wide" href="${S.lastVideoUrl}" download="${name}">Download video</a>
-      ${canShare ? '<button class="ghost wide" id="xshare">Share&hellip;</button>' : ''}`;
-    $('#xcancel').textContent = 'Close';
-    const sh = $('#xshare'); if (sh) sh.onclick = () => navigator.share({ files: [new File([res.blob], name, { type: res.mime })], title: `${m.us} v ${m.them}` }).catch(() => {});
-    toast('Your video is ready');
+    const canShare = !!(navigator.canShare && navigator.maxTouchPoints > 1 && navigator.canShare({ files: [new File([res.blob], name, { type: res.mime })] }));
+    S.video = { matchId: m.id, blob: res.blob, url: URL.createObjectURL(res.blob), name, ext: res.ext, seconds: res.seconds, clips: clips.length, canShare, when: new Date().toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' }) };
+    scrim.remove();
+    const wrap = $('#vidResultWrap');
+    if (wrap) { wrap.innerHTML = videoResultCard(m); wireVideoResult(m); const pl = $('.player'), off = (pl ? pl.getBoundingClientRect().bottom : 0) + 10; window.scrollTo({ top: wrap.getBoundingClientRect().top + window.scrollY - off }); }
+    toast(res.hasAudio ? 'Your video is ready. Tap Download highlights.' : 'Your video is ready (no sound).');
   } catch (err) {
     scrim.remove();
     if (!(err && err.name === 'AbortError')) toast(err.message || 'Could not make the video');
