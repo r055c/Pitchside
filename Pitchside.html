@@ -198,6 +198,13 @@ label.btn.filebtn{border-style:solid;background:transparent;color:var(--ink)}
 .goalbox .fs input{font:inherit;font-size:22px;font-weight:800;text-align:center;padding:8px;border:1.5px solid var(--line,#d8d3c6);border-radius:12px;background:var(--card,#fff);color:inherit;width:100%;box-sizing:border-box}
 .goalbox .fs .dash{padding-bottom:12px;font-weight:800}
 
+.actions.quick{display:flex;gap:8px}.actions.quick .ghost{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+#vidCard .fs{display:flex;gap:10px}#vidCard .fs label{flex:1;display:flex;flex-direction:column;gap:4px;font-size:13px;font-weight:700}
+#vidCard input,#goalTimes{font:inherit;padding:10px;border:1.5px solid var(--line,#d8d3c6);border-radius:12px;background:var(--card,#fff);color:inherit;width:100%;box-sizing:border-box}
+#goalTimes{margin:6px 0 10px;resize:vertical}.eg{background:rgba(0,0,0,.05);border-radius:10px;padding:8px 12px;font-size:13px;margin:6px 0;white-space:pre-wrap}
+.sheet .bar{height:10px;border-radius:6px;background:rgba(0,0,0,.1);overflow:hidden;margin:10px 0}.sheet .bar i{display:block;height:100%;background:var(--accent,#F1B51C);transition:width .3s}
+.sheet a.primary{display:block;text-align:center;text-decoration:none;margin:6px 0}
+
 </style>
 </head>
 <body>
@@ -234,6 +241,205 @@ const deleteMatch = id => tx('readwrite', s => s.delete(id));
 const newId = () => (self.crypto && crypto.randomUUID) ? crypto.randomUUID() : Date.now().toString(36) + Math.random().toString(36).slice(2, 8);
 
 return {allMatches,getMatch,saveMatch,deleteMatch,newId};})();
+const {makeHighlightsVideo,pickMime}=(()=>{
+// Pitchside highlights exporter.
+// Plays the chosen clips from the match video into a canvas, draws a broadcast-style score graphic on top,
+// and records the result with MediaRecorder. Everything happens in the browser; nothing is uploaded.
+
+const NAVY = '#0B1F3A', YEL = '#F1B51C', WHITE = '#FFFFFF', GREEN = '#14804A', CLAY = '#D9552B';
+const abbr = s => String(s || '').replace(/[^A-Za-z0-9 ]/g, '').trim().split(/\s+/)[0].slice(0, 3).toUpperCase() || '---';
+const ease = x => 1 - Math.pow(1 - Math.min(1, Math.max(0, x)), 3);
+const clock = sec => { sec = Math.max(0, Math.round(sec)); return `${Math.floor(sec / 60)}:${String(sec % 60).padStart(2, '0')}`; };
+
+function pickMime() {
+  const c = ['video/mp4;codecs=avc1.640028,mp4a.40.2', 'video/mp4;codecs=avc1', 'video/mp4', 'video/webm;codecs=vp9,opus', 'video/webm;codecs=vp8,opus', 'video/webm'];
+  if (typeof MediaRecorder === 'undefined') return null;
+  return c.find(t => { try { return MediaRecorder.isTypeSupported(t); } catch (_) { return false; } }) || null;
+}
+
+function rr(ctx, x, y, w, h, r) {
+  ctx.beginPath(); ctx.moveTo(x + r, y); ctx.arcTo(x + w, y, x + w, y + h, r); ctx.arcTo(x + w, y + h, x, y + h, r);
+  ctx.arcTo(x, y + h, x, y, r); ctx.arcTo(x, y, x + w, y, r); ctx.closePath();
+}
+
+// clips: [{ start, end, kind:'goal'|'other', label, side, goalAt, before:{us,them}, after:{us,them} }]
+async function makeHighlightsVideo(file, { clips, us, them, title = 'Highlights', dateText = '', finalScore = null,
+  width = 1280, fps = 30, onProgress = () => {}, signal } = {}) {
+  const mime = pickMime();
+  if (!mime) throw new Error("This browser can't record video. Try Chrome or Edge on a computer.");
+  if (!clips || !clips.length) throw new Error('Nothing to export yet.');
+
+  const url = URL.createObjectURL(file);
+  const v = document.createElement('video');
+  v.playsInline = true; v.setAttribute('playsinline', ''); v.preload = 'auto';
+  v.style.cssText = 'position:fixed;left:0;bottom:0;width:2px;height:2px;opacity:.01;pointer-events:none';
+  v.src = url; document.body.appendChild(v);
+  let ac = null, recorder = null, raf = 0, stopped = false;
+  const cleanup = () => {
+    stopped = true; cancelAnimationFrame(raf);
+    try { if (recorder && recorder.state !== 'inactive') recorder.stop(); } catch (_) {}
+    try { v.pause(); } catch (_) {}
+    v.removeAttribute('src'); try { v.load(); } catch (_) {}
+    v.remove(); URL.revokeObjectURL(url);
+    if (ac) try { ac.close(); } catch (_) {}
+    document.removeEventListener('visibilitychange', onVis);
+  };
+  const aborted = () => signal && signal.aborted;
+  let paused = false;
+  const onVis = () => {
+    // browsers freeze canvas/video work in hidden tabs; hold the recording until the tab is back
+    if (stopped) return;
+    if (document.hidden) { paused = true; try { v.pause(); if (recorder && recorder.state === 'recording') recorder.pause(); } catch (_) {} }
+    else if (paused) { paused = false; try { if (recorder && recorder.state === 'paused') recorder.resume(); } catch (_) {} if (curClip) v.play().catch(() => {}); }
+  };
+  let curClip = null;
+
+  try {
+    await new Promise((res, rej) => { v.onloadedmetadata = res; v.onerror = () => rej(new Error("The video can't be read by this browser.")); });
+    const vw = v.videoWidth || 1280, vh = v.videoHeight || 720;
+    const W = Math.min(width, vw) & ~1, H = Math.round(W * vh / vw) & ~1;
+    const cv = document.createElement('canvas'); cv.width = W; cv.height = H;
+    const ctx = cv.getContext('2d');
+    const k = W / 1280;                                   // everything is designed at 1280 wide
+    const stream = cv.captureStream(fps);
+
+    try {
+      ac = new (window.AudioContext || window.webkitAudioContext)();
+      const src = ac.createMediaElementSource(v);
+      const dest = ac.createMediaStreamDestination();
+      src.connect(dest);                                  // not connected to the speakers: export is silent
+      if (ac.resume) await ac.resume();
+      dest.stream.getAudioTracks().forEach(t => stream.addTrack(t));
+    } catch (_) { ac = null; }
+
+    const chunks = [];
+    recorder = new MediaRecorder(stream, { mimeType: mime, videoBitsPerSecond: Math.round(3500000 * Math.max(.6, k)), audioBitsPerSecond: 128000 });
+    recorder.ondataavailable = e => { if (e.data && e.data.size) chunks.push(e.data); };
+    const stopped$ = new Promise(r => recorder.onstop = r);
+    recorder.start(1000);
+    document.addEventListener('visibilitychange', onVis);
+
+    // ---- planned length, for the progress bar
+    const INTRO = 2.6, OUTRO = 3.2;
+    const total = INTRO + OUTRO + clips.reduce((s, c) => s + (c.end - c.start), 0);
+    let done = 0;
+    const report = (extra = 0) => onProgress({ frac: Math.min(1, (done + extra) / total), done: done + extra, total });
+
+    // ---- drawing
+    const text = (t, x, y, size, color, weight = 800, align = 'left') => {
+      ctx.font = `${weight} ${Math.round(size * k)}px system-ui, "Segoe UI", Roboto, Arial, sans-serif`;
+      ctx.fillStyle = color; ctx.textAlign = align; ctx.textBaseline = 'middle'; ctx.fillText(t, x * k, y * k);
+    };
+    const scorebug = (score, flash) => {
+      const x = 36, y = 34, h = 52, nameW = 78, numW = 50;
+      const total = nameW * 2 + numW * 2 + 6;
+      ctx.save(); ctx.shadowColor = 'rgba(0,0,0,.35)'; ctx.shadowBlur = 12 * k;
+      rr(ctx, x * k, y * k, total * k, h * k, 10 * k); ctx.fillStyle = NAVY; ctx.fill(); ctx.restore();
+      // numbers
+      const nx1 = x + nameW, nx2 = x + nameW + numW + 6;
+      ctx.fillStyle = flash ? YEL : WHITE; ctx.fillRect(nx1 * k, y * k, numW * k, h * k); ctx.fillRect(nx2 * k, y * k, numW * k, h * k);
+      ctx.fillStyle = 'rgba(11,31,58,.18)'; ctx.fillRect((nx2 - 3) * k, y * k, 6 * k, h * k);
+      text(abbr(us), x + nameW / 2, y + h / 2, 22, WHITE, 800, 'center');
+      text(abbr(them), x + nameW + numW * 2 + 6 + nameW / 2, y + h / 2, 22, WHITE, 800, 'center');
+      text(String(score.us), nx1 + numW / 2, y + h / 2 + 1, 30, NAVY, 900, 'center');
+      text(String(score.them), nx2 + numW / 2, y + h / 2 + 1, 30, NAVY, 900, 'center');
+      // accent strip under the bug
+      ctx.fillStyle = YEL; ctx.fillRect(x * k, (y + h) * k, total * k, 4 * k);
+    };
+    const banner = (clip, t, sinceGoal) => {
+      // lower-third that slides in when the goal goes in
+      const a = ease(sinceGoal / 0.45), out = ease((sinceGoal - 4.4) / 0.5);
+      const slide = (1 - a) * 520 + out * 520;
+      const x = 36 - slide, y = 590, h = 84;
+      ctx.save(); ctx.shadowColor = 'rgba(0,0,0,.4)'; ctx.shadowBlur = 16 * k;
+      ctx.fillStyle = YEL; ctx.fillRect(x * k, y * k, 190 * k, h * k);
+      ctx.fillStyle = NAVY; ctx.fillRect((x + 190) * k, y * k, 560 * k, h * k); ctx.restore();
+      text('GOAL!', x + 95, y + h / 2 + 1, 38, NAVY, 900, 'center');
+      const who = clip.side === 'us' ? us : clip.side === 'them' ? them : '';
+      if (who) text(who.toUpperCase(), x + 214, y + 28, 24, YEL, 800);
+      const sc = clip.after ? `${abbr(us)} ${clip.after.us} – ${clip.after.them} ${abbr(them)}` : '';
+      text(sc, x + 214, y + 60, 30, WHITE, 900);
+    };
+    const tag = (clip, a) => {
+      if (!clip.label) return;
+      ctx.save(); ctx.globalAlpha = a;
+      const label = clip.label.toUpperCase(); ctx.font = `800 ${Math.round(20 * k)}px system-ui, Arial, sans-serif`;
+      const w = ctx.measureText(label).width / k + 36;
+      rr(ctx, 36 * k, 640 * k, w * k, 38 * k, 8 * k); ctx.fillStyle = 'rgba(11,31,58,.88)'; ctx.fill();
+      text(label, 54, 659, 20, WHITE, 800); ctx.restore();
+    };
+    const drawVideo = () => { try { ctx.drawImage(v, 0, 0, W, H); } catch (_) {} };
+    const card = (kind, p) => {
+      const g = ctx.createLinearGradient(0, 0, W, H); g.addColorStop(0, '#0B1F3A'); g.addColorStop(1, '#14804A');
+      ctx.fillStyle = g; ctx.fillRect(0, 0, W, H);
+      ctx.fillStyle = 'rgba(255,255,255,.06)'; for (let i = 0; i < 8; i++) ctx.fillRect(0, (i * 90 + 18) * k, W, 44 * k);
+      const a = ease(p / 0.5);
+      ctx.save(); ctx.globalAlpha = a;
+      if (kind === 'intro') {
+        text(title.toUpperCase(), 640, 255, 30, YEL, 800, 'center');
+        text(`${us}  v  ${them}`, 640, 345, 62, WHITE, 900, 'center');
+        if (dateText) text(dateText, 640, 420, 26, 'rgba(255,255,255,.8)', 600, 'center');
+        if (finalScore) text(`FULL TIME  ${finalScore.us} – ${finalScore.them}`, 640, 500, 34, YEL, 800, 'center');
+      } else {
+        text('FULL TIME', 640, 250, 30, YEL, 800, 'center');
+        if (finalScore) text(`${abbr(us)}  ${finalScore.us} – ${finalScore.them}  ${abbr(them)}`, 640, 350, 84, WHITE, 900, 'center');
+        text(`${us} v ${them}`, 640, 440, 28, 'rgba(255,255,255,.85)', 600, 'center');
+        text('Made with Pitchside', 640, 640, 20, 'rgba(255,255,255,.6)', 600, 'center');
+      }
+      ctx.restore();
+    };
+    const frameLoop = fn => new Promise((resolve, reject) => {
+      const step = () => {
+        if (aborted()) return reject(new DOMException('Cancelled', 'AbortError'));
+        if (!paused) { const r = fn(); if (r === true) return resolve(); }
+        raf = requestAnimationFrame(step);
+      };
+      raf = requestAnimationFrame(step);
+    });
+    const playCard = async (kind, secs) => {
+      const t0 = performance.now(); let lastTick = t0, acc = 0;
+      await frameLoop(() => {
+        const now = performance.now(); if (!paused) acc += (now - lastTick) / 1000; lastTick = now;
+        card(kind, acc); report(acc); return acc >= secs;
+      });
+      done += secs;
+    };
+    const waitSeek = t => new Promise(res => { const h = () => { v.removeEventListener('seeked', h); res(); }; v.addEventListener('seeked', h); v.currentTime = t; setTimeout(res, 4000); });
+
+    // ---- run
+    await playCard('intro', INTRO);
+    for (const clip of clips) {
+      curClip = clip;
+      await waitSeek(clip.start); v.playbackRate = 1;
+      await v.play();
+      const len = clip.end - clip.start;
+      await frameLoop(() => {
+        const t = v.currentTime, into = t - clip.start;
+        drawVideo();
+        const isGoal = clip.kind === 'goal' && clip.goalAt != null;
+        const past = isGoal && t >= clip.goalAt;
+        const score = isGoal ? (past ? clip.after : clip.before) : (clip.after || clip.before || { us: 0, them: 0 });
+        scorebug(score || { us: 0, them: 0 }, isGoal && past && t - clip.goalAt < 1.2);
+        if (isGoal && past) banner(clip, t, t - clip.goalAt); else if (!isGoal) tag(clip, Math.min(1, into / 0.3));
+        if (into < 0.3) { ctx.fillStyle = `rgba(0,0,0,${1 - into / 0.3})`; ctx.fillRect(0, 0, W, H); }
+        const rem = clip.end - t; if (rem < 0.3) { ctx.fillStyle = `rgba(0,0,0,${1 - rem / 0.3})`; ctx.fillRect(0, 0, W, H); }
+        report(Math.max(0, Math.min(len, into)));
+        return t >= clip.end || v.ended;
+      });
+      v.pause(); done += len; curClip = null;
+    }
+    await playCard('outro', OUTRO);
+    await new Promise(r => setTimeout(r, 250));
+    try { recorder.stop(); } catch (_) {}
+    await stopped$;
+    const blob = new Blob(chunks, { type: mime.split(';')[0] });
+    const ext = mime.startsWith('video/mp4') ? 'mp4' : 'webm';
+    onProgress({ frac: 1, done: total, total });
+    return { blob, ext, mime: blob.type, seconds: total, width: W, height: H, hasAudio: !!ac };
+  } finally { cleanup(); }
+}
+
+return {makeHighlightsVideo,pickMime};})();
 const {scanVideo,probeVideo,processSignals,findGoals}=(()=>{
 // Pitchside scan engine.
 // scanVideo(): plays the match video fast in a hidden <video>, sampling audio (Web Audio) and
@@ -846,6 +1052,9 @@ async function setupView(m) {
       <button class="primary" id="goScan" ${has ? '' : 'disabled'}>Scan match</button>
       <p class="hint">Keep this screen open and awake while it scans. Nothing leaves your device.</p>
     </section>
+    <section class="card quiet"><h3>Skip the scan?</h3>
+      <p>If you already know when the goals were scored, skip scanning and just type the times in. Pitchside then builds the highlights video with a score graphic.</p>
+      <button class="ghost wide" id="skipScan">Skip scan, enter goal times</button></section>
     <section class="card quiet"><h3>Already analysed on a computer?</h3>
       <p>Import the <code>events.json</code> made by the desktop script.</p>
       <label class="btn ghost"><input id="ifile" type="file" accept=".json,application/json" hidden>Import analysis</label></section>
@@ -857,6 +1066,7 @@ async function setupView(m) {
   const vf = $('#vfile');
   if (vf) vf.onchange = e => attachFile(m, e.target.files[0], () => setupView(m));
   const gb = $('#goScan'); if (gb) gb.onclick = () => startScan(m);
+  $('#skipScan').onclick = async () => { m.events = []; m.curves = null; m.raw = null; m.duration = m.video.duration; m.half = m.halfTime || m.duration / 2; await DB.saveMatch(m); go(`#/match/${m.id}/moments`); };
   $('#ifile').onchange = async e => {
     const f = e.target.files[0]; if (!f) return;
     try { await importAnalysis(m, f); await DB.saveMatch(m); toast('Analysis imported'); go(`#/match/${m.id}/moments`); }
@@ -977,16 +1187,17 @@ function h2hRow(label, a, b) {
 function summaryTab(m) {
   const st = stats(m), tagged = taggedCount(m), total = m.events.filter(e => e.type !== 'skip').length;
   const mean = a => a.reduce((s, v) => s + v, 0) / (a.length || 1);
-  const U = mean(m.curves.us), T = mean(m.curves.them), upct = Math.round(100 * U / ((U + T) || 1));
+  const hasCurves = !!(m.curves && m.curves.us && m.curves.us.length);
+  const U = hasCurves ? mean(m.curves.us) : 0, T = hasCurves ? mean(m.curves.them) : 0, upct = Math.round(100 * U / ((U + T) || 1));
   const pct = (n, d) => d ? Math.round(100 * n / d) + '%' : '–';
   $('#tabBody').innerHTML = `
     ${m.partialTo ? `<div class="notice">The scan stopped early at ${clock(m.partialTo)}, so later moments aren't covered.</div>` : ''}
     <section class="score"><div class="side us"><b>${st.us.goals}</b><span>${esc(m.us)}</span></div><div class="dash">–</div><div class="side them"><b>${st.them.goals}</b><span>${esc(m.them)}</span></div></section>
     ${tagged ? '' : `<div class="notice">Nothing tagged yet. <a href="#/match/${m.id}/moments">Review the ${total} moments</a> to fill in the score and stats.</div>`}
-    <section class="card"><div class="cardhd"><h3>Match flow</h3><div class="legend"><span class="us">${esc(m.us)}</span><span class="them">${esc(m.them)}</span></div></div>
+    ${hasCurves ? `<section class="card"><div class="cardhd"><h3>Match flow</h3><div class="legend"><span class="us">${esc(m.us)}</span><span class="them">${esc(m.them)}</span></div></div>
       <div id="chart" class="chart">${flowChart(m)}</div>
       <div class="share"><span class="us" style="width:${upct}%">${upct}%</span><span class="them" style="width:${100 - upct}%">${100 - upct}%</span></div>
-      <p class="note">Estimated share of the play, from camera movement and crowd noise. Tap a marker to watch it.</p></section>
+      <p class="note">Estimated share of the play, from camera movement and crowd noise. Tap a marker to watch it.</p></section>` : ''}
     <section class="card"><h3>Head to head</h3>
       ${h2hRow('Goals', st.us.goals, st.them.goals)}${h2hRow('Shots', st.us.shots, st.them.shots)}${h2hRow('On target', st.us.sot, st.them.sot)}
       ${h2hRow('Corners', st.us.corners, st.them.corners)}${h2hRow('Saves', st.us.saves, st.them.saves)}${h2hRow('Fouls', st.us.fouls, st.them.fouls)}
@@ -994,7 +1205,7 @@ function summaryTab(m) {
       <div><b>${pct(st.them.goals, st.them.shots)}</b><span>Their conversion</span></div></div>
       <p class="note">Built from the ${tagged} of ${total} moments you've tagged. A save counts as a shot on target for the other side.</p></section>
     <a class="primary" href="#/match/${m.id}/moments">${tagged < total ? 'Review moments' : 'Play highlights'}</a>`;
-  $('#chart').onclick = ev => {
+  if ($('#chart')) $('#chart').onclick = ev => {
     const g = ev.target.closest('.mk'); if (!g) return;
     S.pendingPlay = +g.dataset.id; go(`#/match/${m.id}/moments`);
   };
@@ -1023,6 +1234,7 @@ function renderMoments(m) {
   list.innerHTML = m.events.length ? m.events.map(e => momCard(e, S.clipId === e.id)).join('') : '<p class="note">No moments yet. Play the video and use “Add moment”.</p>';
   const rl = reelList(m); const b = $('#playReel'); if (b) { b.textContent = `Play highlights (${rl.length})`; b.disabled = !rl.length; }
   $$('.count').forEach(c => c.textContent = `${taggedCount(m)}/${m.events.filter(e => e.type !== 'skip').length}`);
+  updateVidInfo(m);
 }
 function needVideo() { toast('Attach the match video first'); const a = $('#playerWrap'); if (a) a.scrollIntoView({ behavior: 'smooth' }); }
 function playClip(e) {
@@ -1053,6 +1265,146 @@ function applySensitivity(m, key) {
   merged.sort((a, b) => a.time - b.time);
   merged.forEach((e, i) => e.id = i + 1);
   m.events = merged; m.sens = key;
+}
+
+
+// ------------------------------------------------------------ goals by time, scoreline, highlights video
+const goalsOf = m => m.events.filter(e => e.type === 'goal' && e.side).sort((a, b) => a.time - b.time);
+function scoreAt(m, t, inclusive) {
+  const r = { us: 0, them: 0 };
+  for (const e of goalsOf(m)) if (inclusive ? e.time <= t : e.time < t) r[e.side]++;
+  return r;
+}
+function parseClockTime(str) {
+  const p = str.split(':').map(Number); if (p.some(n => !isFinite(n))) return null;
+  return p.length === 3 ? p[0] * 3600 + p[1] * 60 + p[2] : p.length === 2 ? p[0] * 60 + p[1] : null;
+}
+function sideFromText(m, t) {
+  const x = t.toLowerCase().trim(); if (!x) return null;
+  const first = n => String(n).toLowerCase().split(/\s+/)[0];
+  if (/^(us|we|home|ours|our)\b/.test(x) || x.startsWith(first(m.us))) return 'us';
+  if (/^(them|they|away|opp|opposition|theirs)\b/.test(x) || x.startsWith(first(m.them))) return 'them';
+  return null;
+}
+function addGoalAt(m, t, side) {
+  const pre = m.preGoal ?? 10, post = m.postGoal ?? 10;
+  const near = m.events.find(e => e.type === 'goal' && Math.abs(e.time - t) < 15);
+  if (near) { if (side) near.side = side; near.manual = true; return near; }
+  const e = { id: 0, time: t, start: Math.max(0, t - pre), end: Math.min(m.duration || t + post, t + post), score: null, label: 'Goal', type: 'goal', side: side || null, manual: true };
+  m.events.push(e); return e;
+}
+function finishEventEdit(m) {
+  m.events.sort((a, b) => a.time - b.time); m.events.forEach((e, i) => e.id = i + 1);
+  DB.saveMatch(m); renderMoments(m); updateGoalStatus(m); updateVidInfo(m);
+}
+function addGoalsFromText(m) {
+  const raw = $('#goalTimes').value; if (!raw.trim()) return toast('Type the goal times first');
+  const bad = []; let n = 0;
+  for (const part of raw.split(/[\n;,]+/).map(x => x.trim()).filter(Boolean)) {
+    const mt = part.match(/^(\d{1,2}:)?\d{1,3}:\d{2}/);
+    const t = mt ? parseClockTime(mt[0]) : null;
+    if (t == null) { bad.push(part); continue; }
+    if (m.duration && t > m.duration + 1) { bad.push(part + ' (past the end of the video)'); continue; }
+    addGoalAt(m, t, sideFromText(m, part.slice(mt[0].length).replace(/^[\s\-:]+/, ''))); n++;
+  }
+  finishEventEdit(m);
+  if (n) $('#goalTimes').value = '';
+  toast(bad.length ? `Added ${n}. Could not read: ${bad.join(', ')}` : `Added ${n} goal${n === 1 ? '' : 's'}. Check who scored on each.`);
+}
+function clipsFor(m, mode) {
+  const pre = m.preGoal ?? 10, post = m.postGoal ?? 10, dur = m.duration || 1e9;
+  let list = reelList(m); if (mode === 'goals') list = list.filter(e => e.type === 'goal');
+  const clips = list.map(e => {
+    if (e.type === 'goal') {
+      const before = scoreAt(m, e.time, false), after = e.side ? scoreAt(m, e.time, true) : before;
+      return { kind: 'goal', label: 'Goal', side: e.side, goalAt: e.time, start: Math.max(0, e.time - pre), end: Math.min(dur, e.time + post), before, after: e.side ? after : null, id: e.id };
+    }
+    const sc = scoreAt(m, e.time, true);
+    return { kind: 'other', label: `${TYPES[e.type].label}${e.side ? ' · ' + (e.side === 'us' ? m.us : m.them) : ''}`, side: e.side, start: e.start, end: Math.min(dur, e.end), before: sc, after: sc, id: e.id };
+  }).sort((a, b) => a.start - b.start);
+  const out = [];
+  for (const c of clips) {
+    const p = out[out.length - 1];
+    if (p && c.start < p.end) {
+      if (c.kind === 'goal' && p.kind !== 'goal') { p.end = Math.min(p.end, c.start); if (p.end - p.start < 3) out.pop(); }
+      else { c.start = p.end; if (c.end - c.start < 3) continue; }
+    }
+    out.push(c);
+  }
+  return out;
+}
+function updateVidInfo(m) {
+  const el = $('#vidInfo'); if (!el) return;
+  const mode = $('#vidMode .on') ? $('#vidMode .on').dataset.v : 'all';
+  const clips = clipsFor(m, mode), secs = clips.reduce((s, c) => s + c.end - c.start, 0) + 6;
+  const g = goalsOf(m), open = m.events.filter(e => e.type === 'goal' && !e.side).length;
+  let t = clips.length ? `${clips.length} clip${clips.length === 1 ? '' : 's'}, about ${clock(secs)} long. Score so far ${m.us} ${g.filter(e => e.side === 'us').length}–${g.filter(e => e.side === 'them').length} ${m.them}.`
+                       : 'Nothing to put in a video yet. Add goal times below, or tag some moments.';
+  if (open) t += ` ${open} goal${open === 1 ? ' needs' : 's need'} a team picking first.`;
+  el.textContent = t;
+  const b = $('#makeVideo'); if (b) b.disabled = !clips.length || !haveFile(m);
+}
+function highlightCards(m) {
+  const has = haveFile(m);
+  return `<section class="card" id="vidCard"><h3>Highlights video</h3>
+    <p class="note" id="vidInfo"></p>
+    <div class="fld"><span>What to include</span>${seg('vidMode', [['all', 'Goals + highlights'], ['goals', 'Goals only']], m.vidMode || 'all')}</div>
+    <div class="fld"><span>Seconds around each goal</span><div class="fs"><label>Before<input id="preGoal" type="number" min="3" max="60" inputmode="numeric" value="${m.preGoal ?? 10}"></label>
+      <label>After<input id="postGoal" type="number" min="3" max="60" inputmode="numeric" value="${m.postGoal ?? 10}"></label></div></div>
+    <button class="primary wide" id="makeVideo" ${has ? '' : 'disabled'}>Make highlights video</button>
+    <p class="note">Adds a score graphic and a GOAL banner, then saves a video file you can share. It plays the clips in real time, so a 3 minute video takes about 3 minutes. Keep this tab in front while it works.</p></section>
+  <section class="card"><h3>Enter goal times</h3>
+    <p class="note">Type the time shown in the video player, one per line, with who scored. For example:</p>
+    <pre class="eg">12:34 ${esc(m.us)}\n34:33 ${esc(m.them)}\n1:02:10 us</pre>
+    <textarea id="goalTimes" rows="4" placeholder="12:34 ${esc(m.us)}"></textarea>
+    <button class="ghost wide" id="addGoals">Add these goals</button></section>`;
+}
+function wireHighlightCards(m) {
+  const pg = $('#preGoal'), po = $('#postGoal');
+  const num = (el, d) => Math.max(3, Math.min(60, parseInt(el.value, 10) || d));
+  if (pg) pg.onchange = () => { m.preGoal = num(pg, 10); DB.saveMatch(m); updateVidInfo(m); };
+  if (po) po.onchange = () => { m.postGoal = num(po, 10); DB.saveMatch(m); updateVidInfo(m); };
+  wireSeg('vidMode', v => { m.vidMode = v; DB.saveMatch(m); updateVidInfo(m); });
+  const ag = $('#addGoals'); if (ag) ag.onclick = () => addGoalsFromText(m);
+  const mv = $('#makeVideo'); if (mv) mv.onclick = () => runExport(m);
+  updateVidInfo(m);
+}
+async function runExport(m) {
+  if (!haveFile(m)) return needVideo();
+  if (!pickMime()) return toast("This browser can't record video. Use Chrome or Edge on a computer.");
+  if (m.events.some(e => e.type === 'goal' && !e.side)) return toast('Pick who scored on each goal first (Us / Them)');
+  const mode = $('#vidMode .on') ? $('#vidMode .on').dataset.v : 'all';
+  const clips = clipsFor(m, mode); if (!clips.length) return toast('Nothing to export yet');
+  stopReel();
+  const g = goalsOf(m), fin = { us: g.filter(e => e.side === 'us').length, them: g.filter(e => e.side === 'them').length };
+  const ctrl = new AbortController();
+  const scrim = document.createElement('div'); scrim.className = 'scrim';
+  scrim.innerHTML = `<div class="sheet" role="dialog" aria-label="Making video"><h4>Making your highlights video</h4>
+    <div class="bar"><i id="xbar" style="width:0%"></i></div><p class="note" id="xtxt">Starting&hellip;</p>
+    <div id="xdone"></div><button class="cancel" id="xcancel">Cancel</button></div>`;
+  document.body.appendChild(scrim);
+  $('#xcancel').onclick = () => { ctrl.abort(); scrim.remove(); };
+  try {
+    const res = await makeHighlightsVideo(S.file, {
+      clips, us: m.us, them: m.them, title: 'Highlights', dateText: fmtDate(m.date), finalScore: fin, signal: ctrl.signal,
+      onProgress: p => { const b = $('#xbar'); if (b) { b.style.width = Math.round(p.frac * 100) + '%'; $('#xtxt').textContent = `${Math.round(p.frac * 100)}% · ${clock(p.done)} of ${clock(p.total)}. Keep this tab in front.`; } },
+    });
+    if (S.lastVideoUrl) URL.revokeObjectURL(S.lastVideoUrl);
+    S.lastVideoUrl = URL.createObjectURL(res.blob);
+    const name = `${slug(m.us)}-v-${slug(m.them)}-highlights.${res.ext}`;
+    const canShare = navigator.canShare && navigator.canShare({ files: [new File([res.blob], name, { type: res.mime })] }) && navigator.maxTouchPoints > 1;
+    if (!$('#xdone')) return;
+    $('#xbar').style.width = '100%'; $('#xtxt').textContent = `Done. ${clock(res.seconds)} long${res.hasAudio ? '' : ' (no sound)'}.`;
+    $('#xdone').innerHTML = `<video controls playsinline src="${S.lastVideoUrl}" style="width:100%;border-radius:12px;margin:8px 0"></video>
+      <a class="primary wide" href="${S.lastVideoUrl}" download="${name}">Download video</a>
+      ${canShare ? '<button class="ghost wide" id="xshare">Share&hellip;</button>' : ''}`;
+    $('#xcancel').textContent = 'Close';
+    const sh = $('#xshare'); if (sh) sh.onclick = () => navigator.share({ files: [new File([res.blob], name, { type: res.mime })], title: `${m.us} v ${m.them}` }).catch(() => {});
+    toast('Your video is ready');
+  } catch (err) {
+    scrim.remove();
+    if (!(err && err.name === 'AbortError')) toast(err.message || 'Could not make the video');
+  }
 }
 
 function goalBox(m) {
@@ -1102,10 +1454,13 @@ function momentsTab(m) {
     <div class="actions">
       <button class="ghost" id="addMoment" ${has ? '' : 'disabled'}>+ Moment at <b id="addAt">0:00</b></button>
       <button class="primary sm" id="playReel">Play highlights</button></div>
+    <div class="actions quick"><button class="ghost" id="goalUs" ${has ? '' : 'disabled'}>Goal here: ${esc(m.us)}</button>
+      <button class="ghost" id="goalThem" ${has ? '' : 'disabled'}>Goal here: ${esc(m.them)}</button></div>
+    ${highlightCards(m)}
     ${m.raw ? goalBox(m) : ''}
     ${m.raw ? `<div class="fld inline"><span>Sensitivity</span>${seg('sensSeg', [['fewer', 'Fewer'], ['normal', 'Normal'], ['more', 'More']], m.sens || 'normal')}</div>` : ''}
     <div id="momentList" class="moms"></div>`;
-  renderMoments(m); updateGoalStatus(m);
+  renderMoments(m); updateGoalStatus(m); wireHighlightCards(m);
   const fg = $('#findGoals'); if (fg) fg.onclick = () => runFindGoals(m);
   const vf = $('#vfile'); if (vf) vf.onchange = e => attachFile(m, e.target.files[0], () => momentsTab(m));
   const list = $('#momentList');
@@ -1113,7 +1468,7 @@ function momentsTab(m) {
     const card = ev.target.closest('.mom'); if (!card) return;
     const e = m.events.find(x => x.id === +card.dataset.id); if (!e) return;
     const sideBtn = ev.target.closest('[data-side]'), actEl = ev.target.closest('[data-act]');
-    if (sideBtn) { e.side = sideBtn.dataset.side; if (e.guess) e.label = 'Goal'; DB.saveMatch(m); card.outerHTML = momCard(e, S.clipId === e.id); updateGoalStatus(m); return; }
+    if (sideBtn) { e.side = sideBtn.dataset.side; if (e.guess) e.label = 'Goal'; DB.saveMatch(m); card.outerHTML = momCard(e, S.clipId === e.id); updateGoalStatus(m); updateVidInfo(m); return; }
     if (!actEl) return;
     if (actEl.dataset.act === 'play') { S.reel = null; updateReelBar(); playClip(e); }
     else if (actEl.dataset.act === 'skip') {
@@ -1134,6 +1489,8 @@ function momentsTab(m) {
     const rl = reelList(m); if (!rl.length) return toast('Nothing to play yet');
     S.reel = { list: rl, i: 0 }; playClip(rl[0]); updateReelBar();
   };
+  const quick = side => () => { const v = $('#vid'); if (!v) return needVideo(); addGoalAt(m, v.currentTime, side); finishEventEdit(m); toast(`Goal marked at ${clock(v.currentTime)} for ${side === 'us' ? m.us : m.them}`); };
+  $('#goalUs').onclick = quick('us'); $('#goalThem').onclick = quick('them');
   $('#addMoment').onclick = () => {
     const v = $('#vid'); if (!v) return needVideo();
     const t = v.currentTime;

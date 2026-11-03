@@ -1,5 +1,6 @@
 import * as DB from './db.js';
 import { scanVideo, probeVideo, processSignals, findGoals } from './analysis.js';
+import { makeHighlightsVideo, pickMime } from './export.js';
 
 // ============================================================ helpers
 const $ = (s, r = document) => r.querySelector(s);
@@ -235,6 +236,9 @@ async function setupView(m) {
       <button class="primary" id="goScan" ${has ? '' : 'disabled'}>Scan match</button>
       <p class="hint">Keep this screen open and awake while it scans. Nothing leaves your device.</p>
     </section>
+    <section class="card quiet"><h3>Skip the scan?</h3>
+      <p>If you already know when the goals were scored, skip scanning and just type the times in. Pitchside then builds the highlights video with a score graphic.</p>
+      <button class="ghost wide" id="skipScan">Skip scan, enter goal times</button></section>
     <section class="card quiet"><h3>Already analysed on a computer?</h3>
       <p>Import the <code>events.json</code> made by the desktop script.</p>
       <label class="btn ghost"><input id="ifile" type="file" accept=".json,application/json" hidden>Import analysis</label></section>
@@ -246,6 +250,7 @@ async function setupView(m) {
   const vf = $('#vfile');
   if (vf) vf.onchange = e => attachFile(m, e.target.files[0], () => setupView(m));
   const gb = $('#goScan'); if (gb) gb.onclick = () => startScan(m);
+  $('#skipScan').onclick = async () => { m.events = []; m.curves = null; m.raw = null; m.duration = m.video.duration; m.half = m.halfTime || m.duration / 2; await DB.saveMatch(m); go(`#/match/${m.id}/moments`); };
   $('#ifile').onchange = async e => {
     const f = e.target.files[0]; if (!f) return;
     try { await importAnalysis(m, f); await DB.saveMatch(m); toast('Analysis imported'); go(`#/match/${m.id}/moments`); }
@@ -366,16 +371,17 @@ function h2hRow(label, a, b) {
 function summaryTab(m) {
   const st = stats(m), tagged = taggedCount(m), total = m.events.filter(e => e.type !== 'skip').length;
   const mean = a => a.reduce((s, v) => s + v, 0) / (a.length || 1);
-  const U = mean(m.curves.us), T = mean(m.curves.them), upct = Math.round(100 * U / ((U + T) || 1));
+  const hasCurves = !!(m.curves && m.curves.us && m.curves.us.length);
+  const U = hasCurves ? mean(m.curves.us) : 0, T = hasCurves ? mean(m.curves.them) : 0, upct = Math.round(100 * U / ((U + T) || 1));
   const pct = (n, d) => d ? Math.round(100 * n / d) + '%' : '–';
   $('#tabBody').innerHTML = `
     ${m.partialTo ? `<div class="notice">The scan stopped early at ${clock(m.partialTo)}, so later moments aren't covered.</div>` : ''}
     <section class="score"><div class="side us"><b>${st.us.goals}</b><span>${esc(m.us)}</span></div><div class="dash">–</div><div class="side them"><b>${st.them.goals}</b><span>${esc(m.them)}</span></div></section>
     ${tagged ? '' : `<div class="notice">Nothing tagged yet. <a href="#/match/${m.id}/moments">Review the ${total} moments</a> to fill in the score and stats.</div>`}
-    <section class="card"><div class="cardhd"><h3>Match flow</h3><div class="legend"><span class="us">${esc(m.us)}</span><span class="them">${esc(m.them)}</span></div></div>
+    ${hasCurves ? `<section class="card"><div class="cardhd"><h3>Match flow</h3><div class="legend"><span class="us">${esc(m.us)}</span><span class="them">${esc(m.them)}</span></div></div>
       <div id="chart" class="chart">${flowChart(m)}</div>
       <div class="share"><span class="us" style="width:${upct}%">${upct}%</span><span class="them" style="width:${100 - upct}%">${100 - upct}%</span></div>
-      <p class="note">Estimated share of the play, from camera movement and crowd noise. Tap a marker to watch it.</p></section>
+      <p class="note">Estimated share of the play, from camera movement and crowd noise. Tap a marker to watch it.</p></section>` : ''}
     <section class="card"><h3>Head to head</h3>
       ${h2hRow('Goals', st.us.goals, st.them.goals)}${h2hRow('Shots', st.us.shots, st.them.shots)}${h2hRow('On target', st.us.sot, st.them.sot)}
       ${h2hRow('Corners', st.us.corners, st.them.corners)}${h2hRow('Saves', st.us.saves, st.them.saves)}${h2hRow('Fouls', st.us.fouls, st.them.fouls)}
@@ -383,7 +389,7 @@ function summaryTab(m) {
       <div><b>${pct(st.them.goals, st.them.shots)}</b><span>Their conversion</span></div></div>
       <p class="note">Built from the ${tagged} of ${total} moments you've tagged. A save counts as a shot on target for the other side.</p></section>
     <a class="primary" href="#/match/${m.id}/moments">${tagged < total ? 'Review moments' : 'Play highlights'}</a>`;
-  $('#chart').onclick = ev => {
+  if ($('#chart')) $('#chart').onclick = ev => {
     const g = ev.target.closest('.mk'); if (!g) return;
     S.pendingPlay = +g.dataset.id; go(`#/match/${m.id}/moments`);
   };
@@ -412,6 +418,7 @@ function renderMoments(m) {
   list.innerHTML = m.events.length ? m.events.map(e => momCard(e, S.clipId === e.id)).join('') : '<p class="note">No moments yet. Play the video and use “Add moment”.</p>';
   const rl = reelList(m); const b = $('#playReel'); if (b) { b.textContent = `Play highlights (${rl.length})`; b.disabled = !rl.length; }
   $$('.count').forEach(c => c.textContent = `${taggedCount(m)}/${m.events.filter(e => e.type !== 'skip').length}`);
+  updateVidInfo(m);
 }
 function needVideo() { toast('Attach the match video first'); const a = $('#playerWrap'); if (a) a.scrollIntoView({ behavior: 'smooth' }); }
 function playClip(e) {
@@ -442,6 +449,146 @@ function applySensitivity(m, key) {
   merged.sort((a, b) => a.time - b.time);
   merged.forEach((e, i) => e.id = i + 1);
   m.events = merged; m.sens = key;
+}
+
+
+// ------------------------------------------------------------ goals by time, scoreline, highlights video
+const goalsOf = m => m.events.filter(e => e.type === 'goal' && e.side).sort((a, b) => a.time - b.time);
+function scoreAt(m, t, inclusive) {
+  const r = { us: 0, them: 0 };
+  for (const e of goalsOf(m)) if (inclusive ? e.time <= t : e.time < t) r[e.side]++;
+  return r;
+}
+function parseClockTime(str) {
+  const p = str.split(':').map(Number); if (p.some(n => !isFinite(n))) return null;
+  return p.length === 3 ? p[0] * 3600 + p[1] * 60 + p[2] : p.length === 2 ? p[0] * 60 + p[1] : null;
+}
+function sideFromText(m, t) {
+  const x = t.toLowerCase().trim(); if (!x) return null;
+  const first = n => String(n).toLowerCase().split(/\s+/)[0];
+  if (/^(us|we|home|ours|our)\b/.test(x) || x.startsWith(first(m.us))) return 'us';
+  if (/^(them|they|away|opp|opposition|theirs)\b/.test(x) || x.startsWith(first(m.them))) return 'them';
+  return null;
+}
+function addGoalAt(m, t, side) {
+  const pre = m.preGoal ?? 10, post = m.postGoal ?? 10;
+  const near = m.events.find(e => e.type === 'goal' && Math.abs(e.time - t) < 15);
+  if (near) { if (side) near.side = side; near.manual = true; return near; }
+  const e = { id: 0, time: t, start: Math.max(0, t - pre), end: Math.min(m.duration || t + post, t + post), score: null, label: 'Goal', type: 'goal', side: side || null, manual: true };
+  m.events.push(e); return e;
+}
+function finishEventEdit(m) {
+  m.events.sort((a, b) => a.time - b.time); m.events.forEach((e, i) => e.id = i + 1);
+  DB.saveMatch(m); renderMoments(m); updateGoalStatus(m); updateVidInfo(m);
+}
+function addGoalsFromText(m) {
+  const raw = $('#goalTimes').value; if (!raw.trim()) return toast('Type the goal times first');
+  const bad = []; let n = 0;
+  for (const part of raw.split(/[\n;,]+/).map(x => x.trim()).filter(Boolean)) {
+    const mt = part.match(/^(\d{1,2}:)?\d{1,3}:\d{2}/);
+    const t = mt ? parseClockTime(mt[0]) : null;
+    if (t == null) { bad.push(part); continue; }
+    if (m.duration && t > m.duration + 1) { bad.push(part + ' (past the end of the video)'); continue; }
+    addGoalAt(m, t, sideFromText(m, part.slice(mt[0].length).replace(/^[\s\-:]+/, ''))); n++;
+  }
+  finishEventEdit(m);
+  if (n) $('#goalTimes').value = '';
+  toast(bad.length ? `Added ${n}. Could not read: ${bad.join(', ')}` : `Added ${n} goal${n === 1 ? '' : 's'}. Check who scored on each.`);
+}
+function clipsFor(m, mode) {
+  const pre = m.preGoal ?? 10, post = m.postGoal ?? 10, dur = m.duration || 1e9;
+  let list = reelList(m); if (mode === 'goals') list = list.filter(e => e.type === 'goal');
+  const clips = list.map(e => {
+    if (e.type === 'goal') {
+      const before = scoreAt(m, e.time, false), after = e.side ? scoreAt(m, e.time, true) : before;
+      return { kind: 'goal', label: 'Goal', side: e.side, goalAt: e.time, start: Math.max(0, e.time - pre), end: Math.min(dur, e.time + post), before, after: e.side ? after : null, id: e.id };
+    }
+    const sc = scoreAt(m, e.time, true);
+    return { kind: 'other', label: `${TYPES[e.type].label}${e.side ? ' · ' + (e.side === 'us' ? m.us : m.them) : ''}`, side: e.side, start: e.start, end: Math.min(dur, e.end), before: sc, after: sc, id: e.id };
+  }).sort((a, b) => a.start - b.start);
+  const out = [];
+  for (const c of clips) {
+    const p = out[out.length - 1];
+    if (p && c.start < p.end) {
+      if (c.kind === 'goal' && p.kind !== 'goal') { p.end = Math.min(p.end, c.start); if (p.end - p.start < 3) out.pop(); }
+      else { c.start = p.end; if (c.end - c.start < 3) continue; }
+    }
+    out.push(c);
+  }
+  return out;
+}
+function updateVidInfo(m) {
+  const el = $('#vidInfo'); if (!el) return;
+  const mode = $('#vidMode .on') ? $('#vidMode .on').dataset.v : 'all';
+  const clips = clipsFor(m, mode), secs = clips.reduce((s, c) => s + c.end - c.start, 0) + 6;
+  const g = goalsOf(m), open = m.events.filter(e => e.type === 'goal' && !e.side).length;
+  let t = clips.length ? `${clips.length} clip${clips.length === 1 ? '' : 's'}, about ${clock(secs)} long. Score so far ${m.us} ${g.filter(e => e.side === 'us').length}–${g.filter(e => e.side === 'them').length} ${m.them}.`
+                       : 'Nothing to put in a video yet. Add goal times below, or tag some moments.';
+  if (open) t += ` ${open} goal${open === 1 ? ' needs' : 's need'} a team picking first.`;
+  el.textContent = t;
+  const b = $('#makeVideo'); if (b) b.disabled = !clips.length || !haveFile(m);
+}
+function highlightCards(m) {
+  const has = haveFile(m);
+  return `<section class="card" id="vidCard"><h3>Highlights video</h3>
+    <p class="note" id="vidInfo"></p>
+    <div class="fld"><span>What to include</span>${seg('vidMode', [['all', 'Goals + highlights'], ['goals', 'Goals only']], m.vidMode || 'all')}</div>
+    <div class="fld"><span>Seconds around each goal</span><div class="fs"><label>Before<input id="preGoal" type="number" min="3" max="60" inputmode="numeric" value="${m.preGoal ?? 10}"></label>
+      <label>After<input id="postGoal" type="number" min="3" max="60" inputmode="numeric" value="${m.postGoal ?? 10}"></label></div></div>
+    <button class="primary wide" id="makeVideo" ${has ? '' : 'disabled'}>Make highlights video</button>
+    <p class="note">Adds a score graphic and a GOAL banner, then saves a video file you can share. It plays the clips in real time, so a 3 minute video takes about 3 minutes. Keep this tab in front while it works.</p></section>
+  <section class="card"><h3>Enter goal times</h3>
+    <p class="note">Type the time shown in the video player, one per line, with who scored. For example:</p>
+    <pre class="eg">12:34 ${esc(m.us)}\n34:33 ${esc(m.them)}\n1:02:10 us</pre>
+    <textarea id="goalTimes" rows="4" placeholder="12:34 ${esc(m.us)}"></textarea>
+    <button class="ghost wide" id="addGoals">Add these goals</button></section>`;
+}
+function wireHighlightCards(m) {
+  const pg = $('#preGoal'), po = $('#postGoal');
+  const num = (el, d) => Math.max(3, Math.min(60, parseInt(el.value, 10) || d));
+  if (pg) pg.onchange = () => { m.preGoal = num(pg, 10); DB.saveMatch(m); updateVidInfo(m); };
+  if (po) po.onchange = () => { m.postGoal = num(po, 10); DB.saveMatch(m); updateVidInfo(m); };
+  wireSeg('vidMode', v => { m.vidMode = v; DB.saveMatch(m); updateVidInfo(m); });
+  const ag = $('#addGoals'); if (ag) ag.onclick = () => addGoalsFromText(m);
+  const mv = $('#makeVideo'); if (mv) mv.onclick = () => runExport(m);
+  updateVidInfo(m);
+}
+async function runExport(m) {
+  if (!haveFile(m)) return needVideo();
+  if (!pickMime()) return toast("This browser can't record video. Use Chrome or Edge on a computer.");
+  if (m.events.some(e => e.type === 'goal' && !e.side)) return toast('Pick who scored on each goal first (Us / Them)');
+  const mode = $('#vidMode .on') ? $('#vidMode .on').dataset.v : 'all';
+  const clips = clipsFor(m, mode); if (!clips.length) return toast('Nothing to export yet');
+  stopReel();
+  const g = goalsOf(m), fin = { us: g.filter(e => e.side === 'us').length, them: g.filter(e => e.side === 'them').length };
+  const ctrl = new AbortController();
+  const scrim = document.createElement('div'); scrim.className = 'scrim';
+  scrim.innerHTML = `<div class="sheet" role="dialog" aria-label="Making video"><h4>Making your highlights video</h4>
+    <div class="bar"><i id="xbar" style="width:0%"></i></div><p class="note" id="xtxt">Starting&hellip;</p>
+    <div id="xdone"></div><button class="cancel" id="xcancel">Cancel</button></div>`;
+  document.body.appendChild(scrim);
+  $('#xcancel').onclick = () => { ctrl.abort(); scrim.remove(); };
+  try {
+    const res = await makeHighlightsVideo(S.file, {
+      clips, us: m.us, them: m.them, title: 'Highlights', dateText: fmtDate(m.date), finalScore: fin, signal: ctrl.signal,
+      onProgress: p => { const b = $('#xbar'); if (b) { b.style.width = Math.round(p.frac * 100) + '%'; $('#xtxt').textContent = `${Math.round(p.frac * 100)}% · ${clock(p.done)} of ${clock(p.total)}. Keep this tab in front.`; } },
+    });
+    if (S.lastVideoUrl) URL.revokeObjectURL(S.lastVideoUrl);
+    S.lastVideoUrl = URL.createObjectURL(res.blob);
+    const name = `${slug(m.us)}-v-${slug(m.them)}-highlights.${res.ext}`;
+    const canShare = navigator.canShare && navigator.canShare({ files: [new File([res.blob], name, { type: res.mime })] }) && navigator.maxTouchPoints > 1;
+    if (!$('#xdone')) return;
+    $('#xbar').style.width = '100%'; $('#xtxt').textContent = `Done. ${clock(res.seconds)} long${res.hasAudio ? '' : ' (no sound)'}.`;
+    $('#xdone').innerHTML = `<video controls playsinline src="${S.lastVideoUrl}" style="width:100%;border-radius:12px;margin:8px 0"></video>
+      <a class="primary wide" href="${S.lastVideoUrl}" download="${name}">Download video</a>
+      ${canShare ? '<button class="ghost wide" id="xshare">Share&hellip;</button>' : ''}`;
+    $('#xcancel').textContent = 'Close';
+    const sh = $('#xshare'); if (sh) sh.onclick = () => navigator.share({ files: [new File([res.blob], name, { type: res.mime })], title: `${m.us} v ${m.them}` }).catch(() => {});
+    toast('Your video is ready');
+  } catch (err) {
+    scrim.remove();
+    if (!(err && err.name === 'AbortError')) toast(err.message || 'Could not make the video');
+  }
 }
 
 function goalBox(m) {
@@ -491,10 +638,13 @@ function momentsTab(m) {
     <div class="actions">
       <button class="ghost" id="addMoment" ${has ? '' : 'disabled'}>+ Moment at <b id="addAt">0:00</b></button>
       <button class="primary sm" id="playReel">Play highlights</button></div>
+    <div class="actions quick"><button class="ghost" id="goalUs" ${has ? '' : 'disabled'}>Goal here: ${esc(m.us)}</button>
+      <button class="ghost" id="goalThem" ${has ? '' : 'disabled'}>Goal here: ${esc(m.them)}</button></div>
+    ${highlightCards(m)}
     ${m.raw ? goalBox(m) : ''}
     ${m.raw ? `<div class="fld inline"><span>Sensitivity</span>${seg('sensSeg', [['fewer', 'Fewer'], ['normal', 'Normal'], ['more', 'More']], m.sens || 'normal')}</div>` : ''}
     <div id="momentList" class="moms"></div>`;
-  renderMoments(m); updateGoalStatus(m);
+  renderMoments(m); updateGoalStatus(m); wireHighlightCards(m);
   const fg = $('#findGoals'); if (fg) fg.onclick = () => runFindGoals(m);
   const vf = $('#vfile'); if (vf) vf.onchange = e => attachFile(m, e.target.files[0], () => momentsTab(m));
   const list = $('#momentList');
@@ -502,7 +652,7 @@ function momentsTab(m) {
     const card = ev.target.closest('.mom'); if (!card) return;
     const e = m.events.find(x => x.id === +card.dataset.id); if (!e) return;
     const sideBtn = ev.target.closest('[data-side]'), actEl = ev.target.closest('[data-act]');
-    if (sideBtn) { e.side = sideBtn.dataset.side; if (e.guess) e.label = 'Goal'; DB.saveMatch(m); card.outerHTML = momCard(e, S.clipId === e.id); updateGoalStatus(m); return; }
+    if (sideBtn) { e.side = sideBtn.dataset.side; if (e.guess) e.label = 'Goal'; DB.saveMatch(m); card.outerHTML = momCard(e, S.clipId === e.id); updateGoalStatus(m); updateVidInfo(m); return; }
     if (!actEl) return;
     if (actEl.dataset.act === 'play') { S.reel = null; updateReelBar(); playClip(e); }
     else if (actEl.dataset.act === 'skip') {
@@ -523,6 +673,8 @@ function momentsTab(m) {
     const rl = reelList(m); if (!rl.length) return toast('Nothing to play yet');
     S.reel = { list: rl, i: 0 }; playClip(rl[0]); updateReelBar();
   };
+  const quick = side => () => { const v = $('#vid'); if (!v) return needVideo(); addGoalAt(m, v.currentTime, side); finishEventEdit(m); toast(`Goal marked at ${clock(v.currentTime)} for ${side === 'us' ? m.us : m.them}`); };
+  $('#goalUs').onclick = quick('us'); $('#goalThem').onclick = quick('them');
   $('#addMoment').onclick = () => {
     const v = $('#vid'); if (!v) return needVideo();
     const t = v.currentTime;
