@@ -146,9 +146,8 @@ export function processSignals(raw, duration, o = {}) {
 // ---------------------------------------------------------------- goal finder
 // A goal usually looks like: a sustained crowd roar, then a lull while players celebrate and walk back,
 // then a restart whistle from the centre circle. Score every moment for that pattern and return the best n.
-export function findGoals(raw, duration, { n = 7, halfTime = 0, sampleFps = 2, minGap = 75 } = {}) {
-  if (!raw || !raw.loud) return [];
-  const fps = sampleFps, N = Math.min(raw.loud.length, Math.ceil(duration * fps));
+function goalSeries(raw, duration, fps) {
+  const N = Math.min(raw.loud.length, Math.ceil(duration * fps));
   const sl = a => Float64Array.from(a).subarray(0, N);
   const loudz = smooth(rz(sl(raw.loud)), 3), resz = smooth(rz(sl(raw.resid)), 5), whz = rz(sl(raw.whistle));
   const idx = s => Math.max(0, Math.min(N - 1, Math.round(s * fps)));
@@ -162,20 +161,59 @@ export function findGoals(raw, duration, { n = 7, halfTime = 0, sampleFps = 2, m
     const rest = Math.min(6, Math.max(0, maxOf(whz, t + 15, t + 60)));
     score[i] = roar + 0.35 * lull + 0.12 * rest;
   }
+  const snap = t0 => { let bi = idx(t0), bv = -Infinity; for (let i = idx(t0 - 4); i <= idx(t0 + 8); i++) if (loudz[i] > bv) { bv = loudz[i]; bi = i; } return bi / fps; };
+  return { N, score, idx, snap };
+}
+
+export function findGoals(raw, duration, { n = 7, halfTime = 0, sampleFps = 2, minGap = 75 } = {}) {
+  if (!raw || !raw.loud) return [];
+  const fps = sampleFps, { N, score, snap } = goalSeries(raw, duration, fps);
   const blocked = t => t < 60 || t > duration - 60 || (halfTime > 0 && Math.abs(t - halfTime) < 60);
   const order = Array.from(score.keys()).sort((a, b) => score[b] - score[a]);
   const out = [];
   for (const i of order) {
     const t = i / fps;
-    if (blocked(t) || out.length >= n * 3) { if (out.length >= n * 3) break; continue; }
+    if (out.length >= n * 3) break;
+    if (blocked(t)) continue;
     if (out.every(o => Math.abs(o.t0 - t) >= minGap)) out.push({ t0: t, s: score[i] });
   }
-  // snap each candidate to where the roar actually starts (the loudest second just before the window)
-  return out.map(o => {
-    let bi = idx(o.t0), bv = -Infinity;
-    for (let i = idx(o.t0 - 4); i <= idx(o.t0 + 8); i++) if (loudz[i] > bv) { bv = loudz[i]; bi = i; }
-    return { time: bi / fps, score: Math.round(o.s * 100) / 100 };
-  }).slice(0, n);
+  return out.map(o => ({ time: snap(o.t0), score: Math.round(o.s * 100) / 100 })).slice(0, n);
+}
+
+// The scoreboard in the corner of the picture only changes when someone scores. The scan records how much each
+// score box changed compared with 4 s earlier; a real digit change shows as a bump lasting a few seconds.
+export function findScoreChanges(sd, fps = 2) {
+  if (!sd) return { changes: [], noisy: false };
+  const found = [];
+  let noisy = false;
+  for (const key of ['h', 'a']) {
+    const x = sd[key]; if (!x || !x.length) continue;
+    const med = median(x), dev = Float64Array.from(x, v => Math.abs(v - med)), mad = median(dev) * 1.4826 + 0.3;
+    const thr = Math.max(5, med + 9 * mad);
+    if (med > 4) noisy = true;               // the box keeps changing: probably covers the match clock or video noise
+    let i = 0;
+    while (i < x.length) {
+      if (x[i] > thr) {
+        let j = i; while (j < x.length && x[j] > thr) j++;
+        const dur = (j - i) / fps;
+        if (dur >= 2 && dur <= 14) found.push({ time: i / fps, side: key, strength: Math.max(...x.slice(i, j)) });
+        i = j;
+      } else i++;
+    }
+  }
+  found.sort((a, b) => a.time - b.time);
+  // both boxes lighting up together is a graphic flash, not a goal
+  const changes = found.filter(f => !found.some(o => o !== f && o.side !== f.side && Math.abs(o.time - f.time) < 3));
+  return { changes, noisy };
+}
+
+// scoreboards update a little after the goal: look back for the crowd roar that caused it
+export function snapToRoar(raw, duration, tChange, { sampleFps = 2, lookBack = 50, fallback = 8 } = {}) {
+  if (!raw || !raw.loud) return Math.max(0, tChange - fallback);
+  const { score, idx, snap } = goalSeries(raw, duration, sampleFps);
+  let bi = -1, bv = -Infinity;
+  for (let i = idx(Math.max(0, tChange - lookBack)); i <= idx(tChange); i++) if (score[i] > bv) { bv = score[i]; bi = i; }
+  return bv > 0.8 && bi >= 0 ? snap(bi / sampleFps) : Math.max(0, tChange - fallback);
 }
 
 // ---------------------------------------------------------------- frame comparison (pan + leftover motion)
@@ -215,7 +253,7 @@ export async function probeVideo(file) {
   } finally { URL.revokeObjectURL(url); }
 }
 
-export async function scanVideo(file, { rate = 4, sampleFps = 2, onProgress = () => {}, signal } = {}) {
+export async function scanVideo(file, { rate = 4, sampleFps = 2, onProgress = () => {}, signal, scoreBoxes = null } = {}) {
   const url = URL.createObjectURL(file);
   const v = document.createElement('video');
   v.playsInline = true; v.setAttribute('playsinline', ''); v.preload = 'auto';
@@ -286,6 +324,17 @@ export async function scanVideo(file, { rate = 4, sampleFps = 2, onProgress = ()
     // keep a small greyscale thumbnail every 4 s of match time so kick-offs can be recognised later
     const TW = 80, TH = 45, TSTEP = Math.round(sampleFps * 4), TSZ = TW * TH;
     const thumbs = new Uint8Array((Math.ceil(N / TSTEP) + 1) * TSZ);
+    // optional scoreboard watching: compare each score box with how it looked ~4 s earlier
+    const SW = 48, SH = 24, SLAG = Math.round(sampleFps * 4);
+    const boxes = scoreBoxes && scoreBoxes.home && scoreBoxes.away ? [scoreBoxes.home, scoreBoxes.away] : null;
+    const sctx = boxes ? Object.assign(document.createElement('canvas'), { width: SW, height: SH }).getContext('2d', { willReadFrequently: true }) : null;
+    const sDiff = boxes ? [new Float32Array(N), new Float32Array(N)] : null, sHist = boxes ? [new Map(), new Map()] : null;
+    const sig = bx => {
+      sctx.drawImage(v, bx.x * v.videoWidth, bx.y * v.videoHeight, bx.w * v.videoWidth, bx.h * v.videoHeight, 0, 0, SW, SH);
+      const d = sctx.getImageData(0, 0, SW, SH).data, g = new Float32Array(SW * SH);
+      for (let i = 0, j = 0; i < g.length; i++, j += 4) g[i] = 0.299 * d[j] + 0.587 * d[j + 1] + 0.114 * d[j + 2];
+      return g;
+    };
     let prev = null, lastBin = -1, lastResid = 0;
     const grab = () => {
       ctx.drawImage(v, 0, 0, FW, FH);
@@ -304,6 +353,12 @@ export async function scanVideo(file, { rate = 4, sampleFps = 2, onProgress = ()
         for (let y = 0; y < TH; y++) for (let x = 0; x < TW; x++) {
           const i = 2 * y * FW + 2 * x; thumbs[o + y * TW + x] = (g[i] + g[i + 1] + g[i + FW] + g[i + FW + 1]) / 4;
         }
+      }
+      if (boxes) for (let q = 0; q < 2; q++) {
+        const sg = sig(boxes[q]), H = sHist[q]; sDiff[q][b] = 0;
+        let ref = null; for (let k = SLAG; k >= SLAG - 3 && !ref; k--) ref = H.get(b - k) || null;
+        if (ref) { let sum = 0; for (let i = 0; i < sg.length; i++) sum += Math.abs(sg[i] - ref[i]); sDiff[q][b] = sum / sg.length; }
+        H.set(b, sg); H.delete(b - SLAG - 6);
       }
       hasF[b] = 1; prev = g; lastBin = b;
     };
@@ -368,7 +423,8 @@ export async function scanVideo(file, { rate = 4, sampleFps = 2, onProgress = ()
     const thumbPack = { w: TW, h: TH, step: TSTEP, fps: sampleFps, b64: btoa(b64) };
     return {
       duration, partial, coveredTo: covered, hasAudio: !!anyAudio, sampleFps, frameCoverage,
-      raw: { pan: r3(pan), resid: r3(resid), loud: anyAudio ? r3(loud) : null, whistle: anyAudio ? r3(whistle) : null, thumbs: thumbPack }
+      raw: { pan: r3(pan), resid: r3(resid), loud: anyAudio ? r3(loud) : null, whistle: anyAudio ? r3(whistle) : null, thumbs: thumbPack,
+        scoreDiff: boxes ? { h: Array.from(sDiff[0].subarray(0, n), x => Math.round(x * 10) / 10), a: Array.from(sDiff[1].subarray(0, n), x => Math.round(x * 10) / 10) } : null }
     };
   } finally { cleanup(); }
 }

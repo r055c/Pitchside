@@ -190,3 +190,7 @@ label.btn.filebtn{border-style:solid;background:transparent;color:var(--ink)}
 #goalTimes{margin:6px 0 10px;resize:vertical}.eg{background:rgba(0,0,0,.05);border-radius:10px;padding:8px 12px;font-size:13px;margin:6px 0;white-space:pre-wrap}
 .sheet .bar{height:10px;border-radius:6px;background:rgba(0,0,0,.1);overflow:hidden;margin:10px 0}.sheet .bar i{display:block;height:100%;background:var(--accent,#F1B51C);transition:width .3s}
 .sheet a.primary{display:block;text-align:center;text-decoration:none;margin:6px 0}
+
+.sheet.wide{max-width:760px;width:calc(100% - 24px);max-height:92vh;overflow:auto}
+.markwrap{background:#000;border-radius:10px;overflow:hidden;margin:8px 0}.markwrap canvas{display:block;width:100%;height:auto;cursor:crosshair}
+.sheet select{font:inherit;padding:10px;border-radius:12px;border:1.5px solid var(--line,#d8d3c6);background:var(--card,#fff);color:inherit}

@@ -1,5 +1,5 @@
 import * as DB from './db.js';
-import { scanVideo, probeVideo, processSignals, findGoals } from './analysis.js';
+import { scanVideo, probeVideo, processSignals, findGoals, findScoreChanges, snapToRoar } from './analysis.js';
 import { makeHighlightsVideo, pickMime } from './export.js';
 
 // ============================================================ helpers
@@ -236,6 +236,10 @@ async function setupView(m) {
       <button class="primary" id="goScan" ${has ? '' : 'disabled'}>Scan match</button>
       <p class="hint">Keep this screen open and awake while it scans. Nothing leaves your device.</p>
     </section>
+    <section class="card quiet"><h3>Is there a scoreboard on the video?</h3>
+      <p>Optional. Mark where the two score numbers are and the scan will notice every time one changes. That gives you the goal times and who scored, automatically.</p>
+      <p class="note" id="sbState">${m.scoreBoxes ? 'Score area set. It will be read during the scan.' : ''}</p>
+      <button class="ghost wide" id="markScore" ${has ? '' : 'disabled'}>${m.scoreBoxes ? 'Change the score area' : 'Mark the score area'}</button></section>
     <section class="card quiet"><h3>Skip the scan?</h3>
       <p>If you already know when the goals were scored, skip scanning and just type the times in. Pitchside then builds the highlights video with a score graphic.</p>
       <button class="ghost wide" id="skipScan">Skip scan, enter goal times</button></section>
@@ -250,6 +254,7 @@ async function setupView(m) {
   const vf = $('#vfile');
   if (vf) vf.onchange = e => attachFile(m, e.target.files[0], () => setupView(m));
   const gb = $('#goScan'); if (gb) gb.onclick = () => startScan(m);
+  const ms = $('#markScore'); if (ms) ms.onclick = () => markScoreArea(m, () => setupView(m));
   $('#skipScan').onclick = async () => { m.events = []; m.curves = null; m.raw = null; m.duration = m.video.duration; m.half = m.halfTime || m.duration / 2; await DB.saveMatch(m); go(`#/match/${m.id}/moments`); };
   $('#ifile').onchange = async e => {
     const f = e.target.files[0]; if (!f) return;
@@ -302,7 +307,7 @@ async function startScan(m) {
   scanView(m);
   try {
     const res = await scanVideo(S.file, {
-      rate: S.rate, sampleFps: 2, signal: ctrl.signal,
+      rate: S.rate, sampleFps: 2, signal: ctrl.signal, scoreBoxes: m.scoreBoxes || null,
       onProgress: p => {
         const sc = S.scanning; if (!sc) return;
         sc.spark.push(p.resid); if (sc.spark.length > 400) sc.spark.shift();
@@ -321,7 +326,14 @@ async function startScan(m) {
     m.events = out.events; m.curves = out.curves; m.half = out.half; m.sens = 'normal';
     await DB.saveMatch(m);
     S.scanning = null;
-    m.frameCoverage = res.frameCoverage; await DB.saveMatch(m);
+    m.frameCoverage = res.frameCoverage;
+    if (res.raw.scoreDiff) {
+      const sc = findScoreChanges(res.raw.scoreDiff, res.sampleFps), homeSide = m.scoreHome || 'us';
+      m.scoreNoisy = sc.noisy;
+      m.scoreEvents = sc.changes.map(c => { const side = c.side === 'h' ? homeSide : (homeSide === 'us' ? 'them' : 'us');
+        return { seen: c.time, side, time: snapToRoar(res.raw, res.duration, c.time, { sampleFps: res.sampleFps }) }; });
+    }
+    await DB.saveMatch(m);
     if (res.frameCoverage != null && res.frameCoverage < 0.9) setTimeout(() => toast('Part of the video was not scanned properly. Keep this tab in front and scan again.'), 2600);
     toast(res.partial ? `Scan stopped early at ${clock(res.coveredTo)}` : `Found ${m.events.length} moments to review`);
     go(`#/match/${m.id}/moments`);
@@ -471,10 +483,14 @@ function sideFromText(m, t) {
   return null;
 }
 function addGoalAt(m, t, side) {
-  const pre = m.preGoal ?? 10, post = m.postGoal ?? 10;
-  const near = m.events.find(e => e.type === 'goal' && Math.abs(e.time - t) < 15);
-  if (near) { if (side) near.side = side; near.manual = true; return near; }
-  const e = { id: 0, time: t, start: Math.max(0, t - pre), end: Math.min(m.duration || t + post, t + post), score: null, label: 'Goal', type: 'goal', side: side || null, manual: true };
+  const pre = m.preGoal ?? 10, post = m.postGoal ?? 10, dur = m.duration || t + post;
+  const near = m.events.find(e => e.type !== 'skip' && (e.type === 'goal' || !e.type) && Math.abs(e.time - t) < 15);
+  if (near) {
+    near.type = 'goal'; near.manual = true; near.guess = false; near.label = 'Goal'; if (side) near.side = side;
+    near.time = t; near.start = Math.max(0, t - pre); near.end = Math.min(dur, t + post);
+    return near;
+  }
+  const e = { id: 0, time: t, start: Math.max(0, t - pre), end: Math.min(dur, t + post), score: null, label: 'Goal', type: 'goal', side: side || null, manual: true };
   m.events.push(e); return e;
 }
 function finishEventEdit(m) {
@@ -497,7 +513,8 @@ function addGoalsFromText(m) {
 }
 function clipsFor(m, mode) {
   const pre = m.preGoal ?? 10, post = m.postGoal ?? 10, dur = m.duration || 1e9;
-  let list = reelList(m); if (mode === 'goals') list = list.filter(e => e.type === 'goal');
+  let list = m.events.filter(e => e.type && e.type !== 'skip' && e.type !== 'foul' && TYPES[e.type]).sort((a, b) => a.time - b.time);
+  if (mode === 'goals') list = list.filter(e => e.type === 'goal');
   const clips = list.map(e => {
     if (e.type === 'goal') {
       const before = scoreAt(m, e.time, false), after = e.side ? scoreAt(m, e.time, true) : before;
@@ -591,6 +608,57 @@ async function runExport(m) {
   }
 }
 
+// ------------------------------------------------------------ scoreboard marking
+function markScoreArea(m, done) {
+  if (!haveFile(m)) return needVideo();
+  const scrim = document.createElement('div'); scrim.className = 'scrim';
+  scrim.innerHTML = `<div class="sheet wide" role="dialog" aria-label="Mark the score"><h4>Mark the score on the video</h4>
+    <p class="note" id="markStep"></p>
+    <div class="markwrap"><canvas id="markCv"></canvas></div>
+    <label class="fld"><span>Pick a moment where the scoreboard is showing</span><input type="range" id="markT" min="0" max="1000" value="150"></label>
+    <label class="fld"><span>The first score number belongs to</span><select id="markWho"><option value="us">${esc(m.us)}</option><option value="them">${esc(m.them)}</option></select></label>
+    <button class="primary wide" id="markSave" disabled>Save</button><button class="ghost wide" id="markRedo">Start again</button><button class="cancel" id="markCancel">Cancel</button></div>`;
+  document.body.appendChild(scrim);
+  const cv = $('#markCv'), ctx = cv.getContext('2d'), vid = document.createElement('video');
+  vid.muted = true; vid.preload = 'auto'; vid.src = S.fileUrl;
+  const boxes = { home: null, away: null }; let step = 0, drag = null;
+  const msg = () => $('#markStep').innerHTML = step === 0 ? 'Step 1 of 2: drag a box tightly around the <b>first team’s score number</b> only (not the clock).'
+    : step === 1 ? 'Step 2 of 2: now drag a box around the <b>second team’s score number</b>.' : 'Both marked. Check the boxes cover just the numbers, then Save.';
+  const draw = () => {
+    if (vid.readyState >= 2) ctx.drawImage(vid, 0, 0, cv.width, cv.height);
+    for (const [k, c] of [['home', '#F1B51C'], ['away', '#34C6F4']]) {
+      const b = (drag && drag.k === k) ? drag.r : boxes[k]; if (!b) continue;
+      ctx.lineWidth = 3; ctx.strokeStyle = c; ctx.strokeRect(b.x * cv.width, b.y * cv.height, b.w * cv.width, b.h * cv.height);
+    }
+  };
+  const seek = () => { const t = (+$('#markT').value / 1000) * (m.video.duration || vid.duration || 0); vid.currentTime = Math.max(0, Math.min(t, (vid.duration || t) - 0.5)); };
+  vid.onloadedmetadata = () => { cv.width = 720; cv.height = Math.round(720 * vid.videoHeight / vid.videoWidth); seek(); };
+  vid.onseeked = draw;
+  $('#markT').oninput = seek;
+  const pt = e => { const r = cv.getBoundingClientRect(); return { x: Math.min(1, Math.max(0, (e.clientX - r.left) / r.width)), y: Math.min(1, Math.max(0, (e.clientY - r.top) / r.height)) }; };
+  cv.style.touchAction = 'none';
+  cv.onpointerdown = e => { if (step > 1) return; cv.setPointerCapture(e.pointerId); const p = pt(e); drag = { k: step === 0 ? 'home' : 'away', x0: p.x, y0: p.y, r: { x: p.x, y: p.y, w: 0, h: 0 } }; };
+  cv.onpointermove = e => { if (!drag) return; const p = pt(e); drag.r = { x: Math.min(drag.x0, p.x), y: Math.min(drag.y0, p.y), w: Math.abs(p.x - drag.x0), h: Math.abs(p.y - drag.y0) }; draw(); };
+  cv.onpointerup = () => {
+    if (!drag) return;
+    if (drag.r.w > 0.005 && drag.r.h > 0.008) { boxes[drag.k] = drag.r; step++; msg(); $('#markSave').disabled = step < 2; }
+    drag = null; draw();
+  };
+  $('#markRedo').onclick = () => { boxes.home = boxes.away = null; step = 0; $('#markSave').disabled = true; msg(); draw(); };
+  const close = () => { scrim.remove(); vid.removeAttribute('src'); vid.load(); };
+  $('#markCancel').onclick = close;
+  $('#markSave').onclick = async () => { m.scoreBoxes = { home: boxes.home, away: boxes.away }; m.scoreHome = $('#markWho').value; await DB.saveMatch(m); close(); toast('Score area saved'); if (done) done(); };
+  msg();
+}
+function scoreCard(m) {
+  if (!m.scoreEvents) return '';
+  const ev = m.scoreEvents, us = ev.filter(e => e.side === 'us').length, them = ev.length - us;
+  return `<section class="card" id="scoreCard"><h3>Scoreboard changes</h3>
+    <p class="note">${ev.length ? `The scoreboard changed ${ev.length} time${ev.length === 1 ? '' : 's'}: ${esc(m.us)} ${us}, ${esc(m.them)} ${them}.` : 'No score changes were seen in the marked area.'}
+    ${m.scoreNoisy ? ' The marked area kept changing, so it may include the clock. Mark just the numbers and scan again.' : ''}</p>
+    ${ev.length ? `<p class="note">${ev.map(e => `${clock(e.time)} ${esc(e.side === 'us' ? m.us : m.them)}`).join(' · ')}</p><button class="primary wide" id="useScore">Use these as the goals</button>` : ''}</section>`;
+}
+
 function goalBox(m) {
   return `<section class="card goalbox" id="goalBox"><h3>Find the goals</h3>
     <p class="note">Enter the final score and Pitchside picks the most goal-like moments (a long roar, then a lull and a restart whistle). You then just tap who scored.</p>
@@ -641,11 +709,18 @@ function momentsTab(m) {
     <div class="actions quick"><button class="ghost" id="goalUs" ${has ? '' : 'disabled'}>Goal here: ${esc(m.us)}</button>
       <button class="ghost" id="goalThem" ${has ? '' : 'disabled'}>Goal here: ${esc(m.them)}</button></div>
     ${highlightCards(m)}
+    ${scoreCard(m)}
     ${m.raw ? goalBox(m) : ''}
     ${m.raw ? `<div class="fld inline"><span>Sensitivity</span>${seg('sensSeg', [['fewer', 'Fewer'], ['normal', 'Normal'], ['more', 'More']], m.sens || 'normal')}</div>` : ''}
     <div id="momentList" class="moms"></div>`;
   renderMoments(m); updateGoalStatus(m); wireHighlightCards(m);
   const fg = $('#findGoals'); if (fg) fg.onclick = () => runFindGoals(m);
+  const us = $('#useScore'); if (us) us.onclick = () => {
+    m.events = m.events.filter(e => !(e.guess && !e.side));
+    for (const e of m.scoreEvents) { const g = addGoalAt(m, e.time, e.side); g.fromScoreboard = true; g.label = 'Goal (scoreboard)'; }
+    m.finalUs = m.scoreEvents.filter(e => e.side === 'us').length; m.finalThem = m.scoreEvents.length - m.finalUs;
+    finishEventEdit(m); toast(`Marked ${m.scoreEvents.length} goals from the scoreboard`);
+  };
   const vf = $('#vfile'); if (vf) vf.onchange = e => attachFile(m, e.target.files[0], () => momentsTab(m));
   const list = $('#momentList');
   list.onclick = ev => {
