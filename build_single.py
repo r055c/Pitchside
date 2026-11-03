@@ -1,4 +1,19 @@
-import re
+import re, datetime
+try:
+    from zoneinfo import ZoneInfo
+    _now = datetime.datetime.now(ZoneInfo("Europe/London"))
+except Exception:
+    _now = datetime.datetime.utcnow()
+STAMP = _now.strftime("%-d %b %Y, %H:%M")
+SLUG = _now.strftime("%Y%m%d%H%M")
+# stamp the source files so the web version, the single file and the cache all agree
+_i = open('index.html', encoding='utf-8').read()
+_i = re.sub(r'(<b id="verTxt">)[^<]*(</b>)', lambda m: m.group(1) + STAMP + m.group(2), _i)
+open('index.html', 'w', encoding='utf-8').write(_i)
+_s = open('sw.js', encoding='utf-8').read()
+_s = re.sub(r"const CACHE = '[^']*';", "const CACHE = 'pitchside-" + SLUG + "';", _s)
+open('sw.js', 'w', encoding='utf-8').write(_s)
+print("version:", STAMP)
 r=lambda p: open(p,encoding='utf-8').read()
 db=re.sub(r'^export ','',r('js/db.js'),flags=re.M)
 an=re.sub(r'^export ','',r('js/analysis.js'),flags=re.M)

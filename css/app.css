@@ -196,3 +196,5 @@ label.btn.filebtn{border-style:solid;background:transparent;color:var(--ink)}
 .sheet select{font:inherit;padding:10px;border-radius:12px;border:1.5px solid var(--line,#d8d3c6);background:var(--card,#fff);color:inherit}
 
 a.dl{display:flex;align-items:center;justify-content:center;gap:8px;text-decoration:none}
+
+.ver{text-align:center;font-size:12px;color:var(--muted,#6b756f);padding:18px 16px 28px;opacity:.85}.ver b{font-weight:700}
