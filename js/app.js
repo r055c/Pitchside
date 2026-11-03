@@ -1,5 +1,5 @@
 import * as DB from './db.js';
-import { scanVideo, probeVideo, processSignals, findGoals, findScoreChanges, snapToRoar } from './analysis.js';
+import { scanVideo, probeVideo, processSignals, findGoals, findScoreChanges, snapToRoar, trainGoalModel } from './analysis.js';
 import { makeHighlightsVideo, pickMime } from './export.js';
 
 // ============================================================ helpers
@@ -659,13 +659,25 @@ function scoreCard(m) {
     ${ev.length ? `<p class="note">${ev.map(e => `${clock(e.time)} ${esc(e.side === 'us' ? m.us : m.them)}`).join(' · ')}</p><button class="primary wide" id="useScore">Use these as the goals</button>` : ''}</section>`;
 }
 
+function loadModel() { try { const j = JSON.parse(lsGet('ps_goal_model', 'null')); return j && j.w && j.w.length === 6 ? j : null; } catch (_) { return null; } }
+function teachFromMatch(m) {
+  const goals = goalsOf(m).filter(e => e.manual || e.fromScoreboard);
+  if (!m.raw || !m.raw.loud) return toast('This match has no audio signals to learn from');
+  if (goals.length < 2) return toast('Confirm at least 2 goals first (scoreboard, typed times or Goal here)');
+  const r = trainGoalModel(m.raw, m.duration, goals.map(e => e.time), { sampleFps: 2, prev: loadModel() });
+  if (!r) return toast('Not enough data to learn from');
+  lsSet('ps_goal_model', JSON.stringify(r.model)); updateTeachInfo(m);
+  toast(`Learned from ${goals.length} goals. On this match it now finds ${r.hit} of ${r.total}.`);
+}
+function updateTeachInfo(m) { const el = $('#teachInfo'); if (!el) return; const md = loadModel(); el.textContent = md ? `Pitchside has learned from ${md.n} goals so far. "Find goals" uses that.` : 'Not taught yet. "Find goals" uses a basic guess.'; }
 function goalBox(m) {
   return `<section class="card goalbox" id="goalBox"><h3>Find the goals</h3>
     <p class="note">Enter the final score and Pitchside picks the most goal-like moments (a long roar, then a lull and a restart whistle). You then just tap who scored.</p>
     <div class="fs"><label>${esc(m.us)}<input id="fsUs" type="number" inputmode="numeric" min="0" max="30" value="${m.finalUs ?? ''}"></label>
       <span class="dash">&ndash;</span>
       <label>${esc(m.them)}<input id="fsThem" type="number" inputmode="numeric" min="0" max="30" value="${m.finalThem ?? ''}"></label></div>
-    <button class="primary wide" id="findGoals">Find goals</button><p class="note" id="goalStatus"></p></section>`;
+    <button class="primary wide" id="findGoals">Find goals</button><p class="note" id="goalStatus"></p>
+    <button class="ghost wide" id="teach">Teach Pitchside from this match's confirmed goals</button><p class="note" id="teachInfo"></p></section>`;
 }
 function updateGoalStatus(m) {
   const el = $('#goalStatus'); if (!el) return;
@@ -683,7 +695,7 @@ function runFindGoals(m) {
   // clear earlier guesses the user has not confirmed
   m.events = m.events.filter(e => !(e.guess && e.created && !e.side));
   for (const e of m.events) if (e.guess && !e.side) { e.type = null; e.guess = false; }
-  const cands = findGoals(m.raw, m.duration, { n: a + b, halfTime: m.halfTime, sampleFps: 2 });
+  const cands = findGoals(m.raw, m.duration, { n: a + b, halfTime: m.halfTime, sampleFps: 2, model: loadModel() });
   let id = Math.max(0, ...m.events.map(x => x.id));
   for (const c of cands) {
     const near = m.events.find(e => Math.abs(e.time - c.time) < 25);
@@ -715,6 +727,7 @@ function momentsTab(m) {
     <div id="momentList" class="moms"></div>`;
   renderMoments(m); updateGoalStatus(m); wireHighlightCards(m);
   const fg = $('#findGoals'); if (fg) fg.onclick = () => runFindGoals(m);
+  const th = $('#teach'); if (th) th.onclick = () => teachFromMatch(m); updateTeachInfo(m);
   const us = $('#useScore'); if (us) us.onclick = () => {
     m.events = m.events.filter(e => !(e.guess && !e.side));
     for (const e of m.scoreEvents) { const g = addGoalAt(m, e.time, e.side); g.fromScoreboard = true; g.label = 'Goal (scoreboard)'; }

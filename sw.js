@@ -1,6 +1,6 @@
 // Pitchside service worker: caches the app shell so it opens offline.
 // Bump CACHE when you change any file, so installed copies pick up the update.
-const CACHE = 'pitchside-v8';
+const CACHE = 'pitchside-v9';
 const SHELL = ['./', 'index.html', 'css/app.css', 'js/app.js', 'js/analysis.js', 'js/db.js', 'js/export.js',
   'manifest.webmanifest', 'icons/icon-192.png', 'icons/icon-512.png', 'icons/icon-maskable-512.png', 'icons/apple-touch-icon.png'];
 

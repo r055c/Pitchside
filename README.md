@@ -8,6 +8,12 @@ Turn a football match recording into highlights and stats. Runs entirely in the 
 3. Review the moments and tag them (goal, shot, corner, save, foul; us or them).
 4. Summary tab: score, match-flow chart, head-to-head stats. Moments tab: replayable highlight reel.
 
+## Making the highlights video
+Goal times can come from four places: typed in (`12:34 Norton`), the "Goal here" buttons while watching, the Find goals button (uses the final score), or the scoreboard reader. **Make highlights video** then clips around each goal, adds a score graphic and GOAL banner, and records an MP4 (or WebM) in the browser.
+
+## Scoreboard reader and learning
+If the footage shows a scoreboard, mark the two score numbers before scanning. The scan records every change and offers them as goals. **Teach Pitchside** then learns what a goal sounds and looks like (crowd roar, lull, restart whistle) so Find goals works on footage with no scoreboard. Untested on real footage so far.
+
 ## Run it
 - **Easiest (no server):** double-click `Pitchside.html` in Chrome or Edge.
 - **As an installable PWA:** serve this folder over HTTP(S), e.g. `python3 -m http.server 8000`, then open `http://localhost:8000`.

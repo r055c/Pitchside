@@ -146,28 +146,70 @@ export function processSignals(raw, duration, o = {}) {
 // ---------------------------------------------------------------- goal finder
 // A goal usually looks like: a sustained crowd roar, then a lull while players celebrate and walk back,
 // then a restart whistle from the centre circle. Score every moment for that pattern and return the best n.
-function goalSeries(raw, duration, fps) {
+const NF = 6;                                   // number of goal features
+const DEFAULT_W = [1, 0, 0.35, 0.12, 0, 0];     // hand-set weights: roar + lull + restart whistle
+function goalSeries(raw, duration, fps, model) {
   const N = Math.min(raw.loud.length, Math.ceil(duration * fps));
   const sl = a => Float64Array.from(a).subarray(0, N);
   const loudz = smooth(rz(sl(raw.loud)), 3), resz = smooth(rz(sl(raw.resid)), 5), whz = rz(sl(raw.whistle));
   const idx = s => Math.max(0, Math.min(N - 1, Math.round(s * fps)));
   const mean = (a, s0, s1) => { const i0 = idx(s0), i1 = Math.max(i0 + 1, idx(s1)); let t = 0; for (let i = i0; i < i1; i++) t += a[i]; return t / (i1 - i0); };
   const maxOf = (a, s0, s1) => { let m = -Infinity; for (let i = idx(s0); i <= idx(s1); i++) m = Math.max(m, a[i]); return m; };
-  const score = new Float64Array(N);
+  const clip = (x, lo, hi) => Math.max(lo, Math.min(hi, x));
+  const feats = Array.from({ length: NF }, () => new Float32Array(N));
   for (let i = 0; i < N; i++) {
     const t = i / fps;
-    const roar = mean(loudz, t, t + 12);
-    const lull = -Math.max(-3, Math.min(3, mean(resz, t + 10, t + 40)));
-    const rest = Math.min(6, Math.max(0, maxOf(whz, t + 15, t + 60)));
-    score[i] = roar + 0.35 * lull + 0.12 * rest;
+    feats[0][i] = mean(loudz, t, t + 12);                                  // sustained roar
+    feats[1][i] = maxOf(loudz, t - 2, t + 8);                              // peak of the roar
+    feats[2][i] = -clip(mean(resz, t + 10, t + 40), -3, 3);                // lull while players celebrate / walk back
+    feats[3][i] = clip(maxOf(whz, t + 15, t + 60), 0, 6);                  // restart whistle
+    feats[4][i] = clip(maxOf(whz, t - 5, t + 10), 0, 6);                   // whistle at the time
+    feats[5][i] = clip(mean(resz, t + 40, t + 70) - mean(resz, t + 10, t + 40), -3, 3);   // play picks up again
   }
+  const w = model && model.w && model.w.length === NF ? model.w : DEFAULT_W;
+  const score = new Float64Array(N);
+  for (let i = 0; i < N; i++) { let x = 0; for (let k = 0; k < NF; k++) x += w[k] * feats[k][i]; score[i] = x; }
   const snap = t0 => { let bi = idx(t0), bv = -Infinity; for (let i = idx(t0 - 4); i <= idx(t0 + 8); i++) if (loudz[i] > bv) { bv = loudz[i]; bi = i; } return bi / fps; };
-  return { N, score, idx, snap };
+  return { N, score, idx, snap, feats };
 }
 
-export function findGoals(raw, duration, { n = 7, halfTime = 0, sampleFps = 2, minGap = 75 } = {}) {
+// Learn what a goal looks like from goals you have confirmed (scoreboard, typed times or taps).
+// Logistic regression on the six features. Returns weights to store and reuse on later matches.
+export function trainGoalModel(raw, duration, goalTimes, { sampleFps = 2, prev = null } = {}) {
+  if (!raw || !raw.loud || !goalTimes.length) return null;
+  const fps = sampleFps, { N, feats, idx } = goalSeries(raw, duration, fps);
+  const pos = [], neg = [];
+  const near = i => goalTimes.reduce((m, g) => Math.min(m, Math.abs(g - i / fps)), Infinity);
+  for (const g of goalTimes) for (let d = -2; d <= 2; d += 0.5) pos.push(idx(g + d));
+  for (let i = Math.round(60 * fps); i < N - 60 * fps; i += 3) if (near(i) > 60) neg.push(i);
+  if (pos.length < 4 || neg.length < 20) return null;
+  const w = new Float64Array(NF).fill(0); let b = 0;
+  const pw = Math.min(25, neg.length / pos.length) * 0.6, lr = 0.05;
+  for (let it = 0; it < 600; it++) {
+    const gw = new Float64Array(NF); let gb = 0;
+    const acc = (i, y, wt) => {
+      let z = b; for (let k = 0; k < NF; k++) z += w[k] * feats[k][i];
+      const p = 1 / (1 + Math.exp(-z)), e = (p - y) * wt;
+      for (let k = 0; k < NF; k++) gw[k] += e * feats[k][i]; gb += e;
+    };
+    for (const i of pos) acc(i, 1, pw); for (const i of neg) acc(i, 0, 1);
+    const tot = pos.length * pw + neg.length;
+    for (let k = 0; k < NF; k++) w[k] -= lr * (gw[k] / tot + 0.01 * w[k]) * 10;
+    b -= lr * gb / tot * 10;
+  }
+  // blend with what was learned from earlier matches, weighted by how many goals each saw
+  const n = goalTimes.length, np = prev && prev.n ? prev.n : 0;
+  const wf = Array.from(w, (x, k) => np ? (x * n + prev.w[k] * np) / (n + np) : x);
+  const model = { w: wf, n: n + np };
+  // in-sample check: where do the confirmed goals rank when we pick the top-N moments?
+  const found = findGoals(raw, duration, { n: goalTimes.length, sampleFps: fps, model });
+  const hit = goalTimes.filter(g => found.some(f => Math.abs(f.time - g) < 45)).length;
+  return { model, hit, total: goalTimes.length };
+}
+
+export function findGoals(raw, duration, { n = 7, halfTime = 0, sampleFps = 2, minGap = 75, model = null } = {}) {
   if (!raw || !raw.loud) return [];
-  const fps = sampleFps, { N, score, snap } = goalSeries(raw, duration, fps);
+  const fps = sampleFps, { N, score, snap } = goalSeries(raw, duration, fps, model);
   const blocked = t => t < 60 || t > duration - 60 || (halfTime > 0 && Math.abs(t - halfTime) < 60);
   const order = Array.from(score.keys()).sort((a, b) => score[b] - score[a]);
   const out = [];

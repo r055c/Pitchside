@@ -6,7 +6,7 @@ ex=re.sub(r'^export ','',r('js/export.js'),flags=re.M)
 app=re.sub(r"^import .*$\n",'',r('js/app.js'),flags=re.M)
 js=("const DB=(()=>{\n"+db+"\nreturn {allMatches,getMatch,saveMatch,deleteMatch,newId};})();\n"
     "const {makeHighlightsVideo,pickMime}=(()=>{\n"+ex+"\nreturn {makeHighlightsVideo,pickMime};})();\n"
-    "const {scanVideo,probeVideo,processSignals,findGoals,findScoreChanges,snapToRoar}=(()=>{\n"+an+"\nreturn {DEFAULTS,percentile,processSignals,probeVideo,scanVideo,findGoals,findScoreChanges,snapToRoar};})();\n"+app)
+    "const {scanVideo,probeVideo,processSignals,findGoals,findScoreChanges,snapToRoar,trainGoalModel}=(()=>{\n"+an+"\nreturn {DEFAULTS,percentile,processSignals,probeVideo,scanVideo,findGoals,findScoreChanges,snapToRoar,trainGoalModel};})();\n"+app)
 js=js.replace("</script>","<\\/script>")
 h=r('index.html')
 h=re.sub(r'<link rel="manifest"[^>]*>\n?','',h)
