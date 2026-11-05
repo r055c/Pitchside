@@ -18,8 +18,49 @@ function rr(ctx, x, y, w, h, r) {
   ctx.arcTo(x, y + h, x, y, r); ctx.arcTo(x, y, x + w, y, r); ctx.closePath();
 }
 
+
+// Sky-style team stats panel. d = { us, them, rows: [[label, a, b], ...], title, sub }. prog (0..1) animates the bars.
+export function drawStats(ctx, W, H, d, prog = 1) {
+  const s = W / 1280, f = n => n * s;
+  const GRN = '#3DD68C', CLY = '#FF7A50', INK = '#EEF3EE', MUT = '#98A89F';
+  const t = (str, x, y, size, color, weight = 800, align = 'left') => {
+    ctx.font = `${weight} ${Math.round(f(size))}px system-ui, "Segoe UI", Roboto, Arial, sans-serif`;
+    ctx.fillStyle = color; ctx.textAlign = align; ctx.textBaseline = 'middle'; ctx.fillText(str, x, y);
+  };
+  ctx.save();
+  ctx.fillStyle = '#0C1511'; ctx.fillRect(0, 0, W, H);
+  const hh = Math.round(H * 0.17);
+  ctx.fillStyle = '#14201A'; ctx.fillRect(0, 0, W, hh);
+  ctx.fillStyle = '#F1B51C'; ctx.fillRect(0, hh, W, f(4));
+  const badge = (cx, name, col) => {
+    const r = hh * 0.34;
+    ctx.beginPath(); ctx.arc(cx, hh / 2, r, 0, Math.PI * 2); ctx.fillStyle = col; ctx.fill();
+    t(abbr(name), cx, hh / 2 + f(1), r / s * 0.62, '#0C1511', 900, 'center');
+  };
+  const padX = f(64), r0 = hh * 0.34, maxN = W * 0.5 - padX - r0 * 2 - f(18) - f(150);
+  const fit = (str, size) => { ctx.font = `800 ${Math.round(f(size))}px system-ui, "Segoe UI", Roboto, Arial, sans-serif`; str = String(str); while (str.length > 3 && ctx.measureText(str).width > maxN) str = str.slice(0, -2).trimEnd() + '\u2026'; return str; };
+  badge(padX + r0, d.us, GRN); t(fit(d.us, 30), padX + r0 * 2 + f(18), hh / 2, 30, INK, 800, 'left');
+  badge(W - padX - r0, d.them, CLY); t(fit(d.them, 30), W - padX - r0 * 2 - f(18), hh / 2, 30, INK, 800, 'right');
+  t(d.title || 'MATCH STATS', W / 2, hh / 2 - f(8), 22, '#F1B51C', 800, 'center');
+  if (d.sub) t(d.sub, W / 2, hh / 2 + f(16), 16, MUT, 600, 'center');
+  const rows = d.rows || [], top = hh + f(24), avail = H - top - f(20), rh = avail / Math.max(1, rows.length);
+  const bx0 = padX, bx1 = W - padX, bw = bx1 - bx0, bh = Math.max(f(8), rh * 0.11);
+  rows.forEach(([label, a, b], i) => {
+    const cy = top + rh * i + rh / 2;
+    t(String(a), bx0, cy - rh * 0.16, 34, INK, 900, 'left');
+    t(String(b), bx1, cy - rh * 0.16, 34, INK, 900, 'right');
+    t(label, W / 2, cy - rh * 0.16, 22, MUT, 700, 'center');
+    const tot = a + b, real = tot ? a / tot : 0.5, share = 0.5 + (real - 0.5) * prog, y = cy + rh * 0.2, gap = f(5);
+    const ua = Math.max(0, bw * share - gap / 2), tb = Math.max(0, bw * (1 - share) - gap / 2);
+    ctx.fillStyle = tot ? GRN : '#25352C'; rr(ctx, bx0, y, Math.max(f(4), ua), bh, bh / 2); ctx.fill();
+    ctx.fillStyle = tot ? CLY : '#25352C'; rr(ctx, bx1 - Math.max(f(4), tb), y, Math.max(f(4), tb), bh, bh / 2); ctx.fill();
+  });
+  ctx.restore();
+}
+
 // clips: [{ start, end, kind:'goal'|'other', label, side, goalAt, before:{us,them}, after:{us,them} }]
 export async function makeHighlightsVideo(file, { clips, us, them, title = 'Highlights', dateText = '', finalScore = null,
+  scoreboard = true, sbPos = 'tl', stats = null,
   width = 1280, fps = 30, onProgress = () => {}, signal } = {}) {
   const mime = pickMime();
   if (!mime) throw new Error("This browser can't record video. Try Chrome or Edge on a computer.");
@@ -76,8 +117,8 @@ export async function makeHighlightsVideo(file, { clips, us, them, title = 'High
     document.addEventListener('visibilitychange', onVis);
 
     // ---- planned length, for the progress bar
-    const INTRO = 2.6, OUTRO = 3.2;
-    const total = INTRO + OUTRO + clips.reduce((s, c) => s + (c.end - c.start), 0);
+    const INTRO = 2.6, OUTRO = 3.2, STATS = stats ? 8 : 0;
+    const total = INTRO + OUTRO + STATS + clips.reduce((s, c) => s + (c.end - c.start), 0);
     let done = 0;
     const report = (extra = 0) => onProgress({ frac: Math.min(1, (done + extra) / total), done: done + extra, total });
 
@@ -87,8 +128,9 @@ export async function makeHighlightsVideo(file, { clips, us, them, title = 'High
       ctx.fillStyle = color; ctx.textAlign = align; ctx.textBaseline = 'middle'; ctx.fillText(t, x * k, y * k);
     };
     const scorebug = (score, flash) => {
-      const x = 36, y = 34, h = 52, nameW = 78, numW = 50;
+      const h = 52, nameW = 78, numW = 50;
       const total = nameW * 2 + numW * 2 + 6;
+      const x = sbPos === 'tr' ? 1280 - 36 - total : 36, y = 34;
       ctx.save(); ctx.shadowColor = 'rgba(0,0,0,.35)'; ctx.shadowBlur = 12 * k;
       rr(ctx, x * k, y * k, total * k, h * k, 10 * k); ctx.fillStyle = NAVY; ctx.fill(); ctx.restore();
       // numbers
@@ -126,6 +168,7 @@ export async function makeHighlightsVideo(file, { clips, us, them, title = 'High
     };
     const drawVideo = () => { try { ctx.drawImage(v, 0, 0, W, H); } catch (_) {} };
     const card = (kind, p) => {
+      if (kind === 'stats') return drawStats(ctx, W, H, stats, ease(p / 1.6));
       const g = ctx.createLinearGradient(0, 0, W, H); g.addColorStop(0, '#0B1F3A'); g.addColorStop(1, '#14804A');
       ctx.fillStyle = g; ctx.fillRect(0, 0, W, H);
       ctx.fillStyle = 'rgba(255,255,255,.06)'; for (let i = 0; i < 8; i++) ctx.fillRect(0, (i * 90 + 18) * k, W, 44 * k);
@@ -175,7 +218,7 @@ export async function makeHighlightsVideo(file, { clips, us, them, title = 'High
         const isGoal = clip.kind === 'goal' && clip.goalAt != null;
         const past = isGoal && t >= clip.goalAt;
         const score = isGoal ? (past ? clip.after : clip.before) : (clip.after || clip.before || { us: 0, them: 0 });
-        scorebug(score || { us: 0, them: 0 }, isGoal && past && t - clip.goalAt < 1.2);
+        if (scoreboard) scorebug(score || { us: 0, them: 0 }, isGoal && past && t - clip.goalAt < 1.2);
         if (isGoal && past) banner(clip, t, t - clip.goalAt); else if (!isGoal) tag(clip, Math.min(1, into / 0.3));
         if (into < 0.3) { ctx.fillStyle = `rgba(0,0,0,${1 - into / 0.3})`; ctx.fillRect(0, 0, W, H); }
         const rem = clip.end - t; if (rem < 0.3) { ctx.fillStyle = `rgba(0,0,0,${1 - rem / 0.3})`; ctx.fillRect(0, 0, W, H); }
@@ -184,6 +227,7 @@ export async function makeHighlightsVideo(file, { clips, us, them, title = 'High
       });
       v.pause(); done += len; curClip = null;
     }
+    if (stats) await playCard('stats', STATS);
     await playCard('outro', OUTRO);
     await new Promise(r => setTimeout(r, 250));
     try { recorder.stop(); } catch (_) {}

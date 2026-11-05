@@ -232,14 +232,135 @@ a.dl{display:flex;align-items:center;justify-content:center;gap:8px;text-decorat
 .gem small{font-weight:400;opacity:.7}
 
 .gemw{margin:0;padding:8px 10px 8px 26px;font-size:13px;line-height:1.4;background:rgba(241,181,28,.18);border-radius:8px}
-.chk.mom{display:flex;gap:10px;align-items:flex-start;font-size:13px;padding:10px 4px}
-.chk.mom input{width:22px;min-width:22px;height:22px;min-height:22px;padding:0;flex:none;accent-color:var(--ink)}
+.chk.extra{padding:10px 4px}
+
+/* ===== desktop workspace (four steps) ===== */
+#app.wide{max-width:none;margin:0}
+.chk{display:flex;gap:10px;align-items:flex-start;font-size:13px;line-height:1.4;min-width:0}
+.chk input{width:22px;min-width:22px;height:22px;min-height:22px;padding:0;margin:1px 0 0;flex:none;accent-color:var(--ink)}
+.chk span{flex:1;min-width:0}
+.wsnav{position:sticky;top:0;z-index:30;display:flex;align-items:center;gap:20px;min-height:60px;padding:0 20px;background:var(--surface);border-bottom:1px solid var(--line)}
+.wsnav .brand{flex:none;font-size:19px;text-decoration:none}
+.wsnav nav{display:flex;gap:2px;flex:1;justify-content:center;min-width:0}
+.wsnav nav a,.wsnav nav .dis{display:flex;align-items:center;gap:8px;padding:0 16px;height:60px;text-decoration:none;font-weight:700;color:var(--muted);border-bottom:3px solid transparent;white-space:nowrap}
+.wsnav nav .dis{opacity:.45}
+.wsnav nav a:hover{color:var(--ink)}
+.wsnav nav a.on{color:var(--ink);border-bottom-color:var(--accent)}
+.wsnav nav i{font-style:normal;width:24px;height:24px;border-radius:50%;background:var(--line);color:var(--ink);display:grid;place-items:center;font-size:12px;font-weight:800}
+.wsnav nav a.on i{background:var(--accent);color:#14211B}
+.wsmeta{display:flex;align-items:center;gap:10px;flex:none}
+.wsmeta div{display:flex;flex-direction:column;text-align:right;line-height:1.2}
+.wsmeta b{font-size:14px}.wsmeta small{font-size:12px}
+.wsmeta .icon{width:40px;height:40px;display:grid;place-items:center;font-size:20px;font-weight:700;text-decoration:none;border-radius:10px}
+.ws{display:grid;gap:20px;padding:20px;align-items:start}
+.ws-video{grid-template-columns:minmax(320px,1fr) minmax(0,1.3fr);max-width:1400px;margin:0 auto}
+.ws-find{grid-template-columns:minmax(0,1.35fr) minmax(380px,1fr)}
+.ws-review{grid-template-columns:minmax(0,2fr) minmax(360px,1fr)}
+.ws-export{grid-template-columns:minmax(0,1.4fr) minmax(360px,1fr)}
+.wsL{position:sticky;top:80px;max-height:calc(100vh - 100px);overflow:auto;display:flex;flex-direction:column;gap:14px;min-width:0}
+.wsR{min-width:0}
+.wsForm{gap:14px}
+.wsForm .fs,.exCard .fs,.fpTop .fs{display:flex;gap:10px;align-items:flex-end}
+.wsForm .fs label,.exCard .fs label,.fpTop .fs label{flex:1;display:flex;flex-direction:column;gap:4px;font-size:13px;font-weight:700;min-width:0}
+.exCard .fs input,.fpTop .fs input{font-size:20px;font-weight:800;text-align:center;padding:8px}
+.vprev video{width:100%;max-height:70vh;background:#000;border-radius:12px;display:block}
+.vprev .attach{min-height:280px;justify-content:center}
+.pl{display:flex;flex-direction:column;gap:10px}
+.vwrap{position:relative}
+.vwrap video{width:100%;max-height:calc(100vh - 260px);background:#000;border-radius:14px;display:block}
+.tlbox{display:flex;flex-direction:column;gap:6px}
+.tl{position:relative;height:30px;background:var(--surface);border:1.5px solid var(--line);border-radius:10px;cursor:pointer}
+.tl::before{content:"";position:absolute;left:8px;right:8px;top:50%;height:4px;margin-top:-2px;background:var(--line);border-radius:2px}
+.tl .pos{position:absolute;top:2px;bottom:2px;width:2px;background:var(--ink);border-radius:1px;pointer-events:none}
+.mk2{position:absolute;top:50%;width:14px;height:14px;margin:-7px 0 0 -7px;border-radius:50%;background:var(--muted);border:2px solid var(--surface);padding:0}
+.mk2.us{background:var(--us)}.mk2.them{background:var(--them)}
+.mk2.goal{width:18px;height:18px;margin:-9px 0 0 -9px}
+.mk2.sel{outline:3px solid var(--accent);outline-offset:1px}
+.tlrow{display:flex;align-items:center;justify-content:space-between;gap:10px}
+.tlrow span{font-variant-numeric:tabular-nums;font-weight:700;font-size:14px}
+.sbov{position:absolute;top:3%;left:3%;display:flex;align-items:stretch;border-radius:6px;overflow:hidden;font-weight:900;background:#0B1F3A;color:#fff;font-size:clamp(11px,1.5vw,17px);box-shadow:0 4px 12px rgba(0,0,0,.4);border-bottom:3px solid #F1B51C;pointer-events:none}
+.sbov.tr{left:auto;right:3%}
+.sbov span{padding:6px 10px;display:grid;place-items:center}
+.sbov b{background:#fff;color:#0B1F3A;padding:6px 10px;min-width:2em;text-align:center;display:grid;place-items:center}
+/* find */
+.fp{display:flex;flex-direction:column;height:calc(100vh - 100px);background:var(--surface);border:1px solid var(--line);border-radius:var(--r);overflow:hidden}
+.fpTop{padding:14px 16px;border-bottom:1px solid var(--line);display:flex;flex-direction:column;gap:6px}
+.fpScroll{flex:1;overflow:auto;padding:10px 16px}
+.fpBot{padding:10px 16px 14px;border-top:1px solid var(--line);background:var(--surface)}
+.fpBot .note{margin:0 0 8px;min-height:18px}
+.fpBtns{display:flex;gap:8px}.fpBtns>*{flex:1}
+.sec{border-bottom:1px solid var(--line)}
+.sec summary{display:flex;align-items:center;gap:8px;min-height:52px;cursor:pointer;list-style:none;font-weight:700}
+.sec summary::-webkit-details-marker{display:none}
+.sec summary::before{content:"\25B8";color:var(--muted);transition:transform .15s;font-size:14px}
+.sec[open] summary::before{transform:rotate(90deg)}
+.sec .sn{flex:none}.sec .st{margin-left:auto;font-weight:600}
+.tag2{font-style:normal;font-size:11px;font-weight:800;letter-spacing:.04em;text-transform:uppercase;padding:2px 8px;border-radius:99px;background:var(--accent);color:#14211B}
+.sb{display:flex;flex-direction:column;gap:10px;padding:0 0 16px 22px}
+.sb .note{margin-top:0}
+.sb textarea{font:inherit;padding:10px;border:1.5px solid var(--line);border-radius:12px;background:var(--surface);color:inherit;width:100%;resize:vertical}
+.sb .eg{margin:0}
+.gem{display:grid;gap:10px}
+.res{background:color-mix(in srgb,var(--accent) 14%,var(--surface));border:1px solid color-mix(in srgb,var(--accent) 45%,var(--line));border-radius:12px;padding:6px 12px 10px;margin-bottom:10px}
+.res h4{font-size:13px;color:var(--muted);padding:6px 0}
+.ok{color:#2f9e5b;font-weight:700}.no{color:var(--muted)}
+/* review */
+.rv{display:flex;flex-direction:column;gap:12px;height:calc(100vh - 100px)}
+.rvScore{display:flex;align-items:baseline;justify-content:center;gap:10px;flex-wrap:wrap}
+.rvScore b{font-size:42px;font-weight:800;line-height:1;font-variant-numeric:tabular-nums}.rvScore i{font-style:normal;color:var(--muted);font-size:28px}
+.rvScore span{font-size:13px;font-weight:700;max-width:30%;text-align:center}
+.rvHeadWrap{text-align:center;display:flex;flex-direction:column;gap:6px}
+.notice.sm{font-size:13px;padding:8px 12px;text-align:left}
+.chips2{display:flex;gap:6px;flex-wrap:wrap}
+.fchip{display:inline-flex;align-items:center;gap:6px;padding:6px 12px;border-radius:99px;border:1.5px solid var(--line);font-weight:700;font-size:13px;background:var(--surface)}
+.fchip i{font-style:normal;font-size:11px;background:var(--line);border-radius:99px;padding:0 7px}
+.fchip.on{background:var(--ink);color:var(--bg);border-color:var(--ink)}.fchip.on i{background:color-mix(in srgb,var(--bg) 25%,transparent);color:var(--bg)}
+.rvList{flex:1;overflow:auto;display:flex;flex-direction:column;gap:6px;padding-right:2px}
+.hl{background:var(--surface);border:1.5px solid var(--line);border-radius:12px}
+.hl.open{border-color:var(--ink)}.hl.playing{border-color:var(--accent);box-shadow:0 0 0 3px color-mix(in srgb,var(--accent) 35%,transparent)}
+.hlHead{display:flex;align-items:center;gap:10px;width:100%;padding:10px 12px;text-align:left;min-height:48px}
+.hlHead b{font-variant-numeric:tabular-nums;font-size:16px;min-width:52px}
+.hlType{font-weight:600}.hlWho{margin-left:auto;font-size:13px;color:var(--muted);font-weight:700}
+.dot{width:12px;height:12px;border-radius:50%;background:var(--muted);flex:none}.dot.us{background:var(--us)}.dot.them{background:var(--them)}
+.hlBody{padding:2px 12px 12px;display:flex;flex-direction:column;gap:10px;border-top:1px solid var(--line)}
+.hlRow{display:flex;gap:10px;align-items:flex-end;flex-wrap:wrap;padding-top:8px}
+.hlRow label,.hlRow .who{display:flex;flex-direction:column;gap:4px;font-size:12px;font-weight:700;flex:1;min-width:120px}
+.hlRow select{min-height:40px;background:var(--bg);border:1.5px solid var(--line);border-radius:10px;padding:0 8px}
+.hlRow input{min-height:40px;padding:6px 10px;text-align:center}
+.hlBtns{display:flex;gap:8px}.hlBtns .primary{min-height:40px}
+.hlRow .seg.sm button{padding:0 10px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;flex:1}
+.empty{padding:14px}
+.rvFoot{display:flex;flex-direction:column;gap:8px;border-top:1px solid var(--line);padding-top:10px}
+.rvAdd{display:flex;gap:6px;flex-wrap:wrap}.rvAdd .ghost{flex:1;min-width:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.statsBox{background:#0C1511;border-radius:14px;padding:12px;display:flex;flex-direction:column;gap:10px;color:#EEF3EE}
+.statsBox .statsHd{display:flex;justify-content:space-between;align-items:center}
+.statsBox h3{font-size:14px;letter-spacing:.06em;text-transform:uppercase;color:#98A89F}
+.statsBox canvas{width:100%;height:auto;border-radius:10px;display:block}
+.statsBox .ghost{color:#EEF3EE;border-color:#25352C}
+.statsBox .chk input{accent-color:#3DD68C}
+.flowbox summary{cursor:pointer;font-weight:700}
+.flowbox{gap:10px}
+/* export */
+.ex{display:flex;flex-direction:column;gap:14px}
+.exCard{gap:16px}
+.exCard .seg{max-width:420px}
+@media (max-width:1000px){
+  .ws{grid-template-columns:1fr!important;padding:12px}
+  .wsL{position:static;max-height:none}
+  .fp,.rv{height:auto}.fpScroll,.rvList{max-height:60vh}
+  .wsnav{flex-wrap:wrap;gap:6px;padding:6px 10px}.wsnav nav{order:3;flex-basis:100%;overflow:auto;justify-content:flex-start}
+  .wsnav nav a,.wsnav nav .dis{height:44px;padding:0 10px}
+}
+
+.rvAdd .full{flex:1 1 100%}
+.ws-review .wsL{position:static;max-height:none;overflow:visible}
+.ws-review .wsR{position:sticky;top:80px}
 
 </style>
 </head>
 <body>
 <div id="app"></div>
-<footer class="ver" id="ver">Version <b id="verTxt">5 Nov 2026, 21:11</b></footer>
+<footer class="ver" id="ver">Version <b id="verTxt">5 Nov 2026, 21:46</b></footer>
 <div id="toast" role="status" aria-live="polite"></div>
 <script>
 const DB=(()=>{
@@ -272,7 +393,7 @@ const deleteMatch = id => tx('readwrite', s => s.delete(id));
 const newId = () => (self.crypto && crypto.randomUUID) ? crypto.randomUUID() : Date.now().toString(36) + Math.random().toString(36).slice(2, 8);
 
 return {allMatches,getMatch,saveMatch,deleteMatch,newId};})();
-const {pickMime,makeHighlightsVideo}=(()=>{
+const {pickMime,drawStats,makeHighlightsVideo}=(()=>{
 // Pitchside highlights exporter.
 // Plays the chosen clips from the match video into a canvas, draws a broadcast-style score graphic on top,
 // and records the result with MediaRecorder. Everything happens in the browser; nothing is uploaded.
@@ -293,8 +414,49 @@ function rr(ctx, x, y, w, h, r) {
   ctx.arcTo(x, y + h, x, y, r); ctx.arcTo(x, y, x + w, y, r); ctx.closePath();
 }
 
+
+// Sky-style team stats panel. d = { us, them, rows: [[label, a, b], ...], title, sub }. prog (0..1) animates the bars.
+function drawStats(ctx, W, H, d, prog = 1) {
+  const s = W / 1280, f = n => n * s;
+  const GRN = '#3DD68C', CLY = '#FF7A50', INK = '#EEF3EE', MUT = '#98A89F';
+  const t = (str, x, y, size, color, weight = 800, align = 'left') => {
+    ctx.font = `${weight} ${Math.round(f(size))}px system-ui, "Segoe UI", Roboto, Arial, sans-serif`;
+    ctx.fillStyle = color; ctx.textAlign = align; ctx.textBaseline = 'middle'; ctx.fillText(str, x, y);
+  };
+  ctx.save();
+  ctx.fillStyle = '#0C1511'; ctx.fillRect(0, 0, W, H);
+  const hh = Math.round(H * 0.17);
+  ctx.fillStyle = '#14201A'; ctx.fillRect(0, 0, W, hh);
+  ctx.fillStyle = '#F1B51C'; ctx.fillRect(0, hh, W, f(4));
+  const badge = (cx, name, col) => {
+    const r = hh * 0.34;
+    ctx.beginPath(); ctx.arc(cx, hh / 2, r, 0, Math.PI * 2); ctx.fillStyle = col; ctx.fill();
+    t(abbr(name), cx, hh / 2 + f(1), r / s * 0.62, '#0C1511', 900, 'center');
+  };
+  const padX = f(64), r0 = hh * 0.34, maxN = W * 0.5 - padX - r0 * 2 - f(18) - f(150);
+  const fit = (str, size) => { ctx.font = `800 ${Math.round(f(size))}px system-ui, "Segoe UI", Roboto, Arial, sans-serif`; str = String(str); while (str.length > 3 && ctx.measureText(str).width > maxN) str = str.slice(0, -2).trimEnd() + '\u2026'; return str; };
+  badge(padX + r0, d.us, GRN); t(fit(d.us, 30), padX + r0 * 2 + f(18), hh / 2, 30, INK, 800, 'left');
+  badge(W - padX - r0, d.them, CLY); t(fit(d.them, 30), W - padX - r0 * 2 - f(18), hh / 2, 30, INK, 800, 'right');
+  t(d.title || 'MATCH STATS', W / 2, hh / 2 - f(8), 22, '#F1B51C', 800, 'center');
+  if (d.sub) t(d.sub, W / 2, hh / 2 + f(16), 16, MUT, 600, 'center');
+  const rows = d.rows || [], top = hh + f(24), avail = H - top - f(20), rh = avail / Math.max(1, rows.length);
+  const bx0 = padX, bx1 = W - padX, bw = bx1 - bx0, bh = Math.max(f(8), rh * 0.11);
+  rows.forEach(([label, a, b], i) => {
+    const cy = top + rh * i + rh / 2;
+    t(String(a), bx0, cy - rh * 0.16, 34, INK, 900, 'left');
+    t(String(b), bx1, cy - rh * 0.16, 34, INK, 900, 'right');
+    t(label, W / 2, cy - rh * 0.16, 22, MUT, 700, 'center');
+    const tot = a + b, real = tot ? a / tot : 0.5, share = 0.5 + (real - 0.5) * prog, y = cy + rh * 0.2, gap = f(5);
+    const ua = Math.max(0, bw * share - gap / 2), tb = Math.max(0, bw * (1 - share) - gap / 2);
+    ctx.fillStyle = tot ? GRN : '#25352C'; rr(ctx, bx0, y, Math.max(f(4), ua), bh, bh / 2); ctx.fill();
+    ctx.fillStyle = tot ? CLY : '#25352C'; rr(ctx, bx1 - Math.max(f(4), tb), y, Math.max(f(4), tb), bh, bh / 2); ctx.fill();
+  });
+  ctx.restore();
+}
+
 // clips: [{ start, end, kind:'goal'|'other', label, side, goalAt, before:{us,them}, after:{us,them} }]
 async function makeHighlightsVideo(file, { clips, us, them, title = 'Highlights', dateText = '', finalScore = null,
+  scoreboard = true, sbPos = 'tl', stats = null,
   width = 1280, fps = 30, onProgress = () => {}, signal } = {}) {
   const mime = pickMime();
   if (!mime) throw new Error("This browser can't record video. Try Chrome or Edge on a computer.");
@@ -351,8 +513,8 @@ async function makeHighlightsVideo(file, { clips, us, them, title = 'Highlights'
     document.addEventListener('visibilitychange', onVis);
 
     // ---- planned length, for the progress bar
-    const INTRO = 2.6, OUTRO = 3.2;
-    const total = INTRO + OUTRO + clips.reduce((s, c) => s + (c.end - c.start), 0);
+    const INTRO = 2.6, OUTRO = 3.2, STATS = stats ? 8 : 0;
+    const total = INTRO + OUTRO + STATS + clips.reduce((s, c) => s + (c.end - c.start), 0);
     let done = 0;
     const report = (extra = 0) => onProgress({ frac: Math.min(1, (done + extra) / total), done: done + extra, total });
 
@@ -362,8 +524,9 @@ async function makeHighlightsVideo(file, { clips, us, them, title = 'Highlights'
       ctx.fillStyle = color; ctx.textAlign = align; ctx.textBaseline = 'middle'; ctx.fillText(t, x * k, y * k);
     };
     const scorebug = (score, flash) => {
-      const x = 36, y = 34, h = 52, nameW = 78, numW = 50;
+      const h = 52, nameW = 78, numW = 50;
       const total = nameW * 2 + numW * 2 + 6;
+      const x = sbPos === 'tr' ? 1280 - 36 - total : 36, y = 34;
       ctx.save(); ctx.shadowColor = 'rgba(0,0,0,.35)'; ctx.shadowBlur = 12 * k;
       rr(ctx, x * k, y * k, total * k, h * k, 10 * k); ctx.fillStyle = NAVY; ctx.fill(); ctx.restore();
       // numbers
@@ -401,6 +564,7 @@ async function makeHighlightsVideo(file, { clips, us, them, title = 'Highlights'
     };
     const drawVideo = () => { try { ctx.drawImage(v, 0, 0, W, H); } catch (_) {} };
     const card = (kind, p) => {
+      if (kind === 'stats') return drawStats(ctx, W, H, stats, ease(p / 1.6));
       const g = ctx.createLinearGradient(0, 0, W, H); g.addColorStop(0, '#0B1F3A'); g.addColorStop(1, '#14804A');
       ctx.fillStyle = g; ctx.fillRect(0, 0, W, H);
       ctx.fillStyle = 'rgba(255,255,255,.06)'; for (let i = 0; i < 8; i++) ctx.fillRect(0, (i * 90 + 18) * k, W, 44 * k);
@@ -450,7 +614,7 @@ async function makeHighlightsVideo(file, { clips, us, them, title = 'Highlights'
         const isGoal = clip.kind === 'goal' && clip.goalAt != null;
         const past = isGoal && t >= clip.goalAt;
         const score = isGoal ? (past ? clip.after : clip.before) : (clip.after || clip.before || { us: 0, them: 0 });
-        scorebug(score || { us: 0, them: 0 }, isGoal && past && t - clip.goalAt < 1.2);
+        if (scoreboard) scorebug(score || { us: 0, them: 0 }, isGoal && past && t - clip.goalAt < 1.2);
         if (isGoal && past) banner(clip, t, t - clip.goalAt); else if (!isGoal) tag(clip, Math.min(1, into / 0.3));
         if (into < 0.3) { ctx.fillStyle = `rgba(0,0,0,${1 - into / 0.3})`; ctx.fillRect(0, 0, W, H); }
         const rem = clip.end - t; if (rem < 0.3) { ctx.fillStyle = `rgba(0,0,0,${1 - rem / 0.3})`; ctx.fillRect(0, 0, W, H); }
@@ -459,6 +623,7 @@ async function makeHighlightsVideo(file, { clips, us, them, title = 'Highlights'
       });
       v.pause(); done += len; curClip = null;
     }
+    if (stats) await playCard('stats', STATS);
     await playCard('outro', OUTRO);
     await new Promise(r => setTimeout(r, 250));
     try { recorder.stop(); } catch (_) {}
@@ -470,7 +635,7 @@ async function makeHighlightsVideo(file, { clips, us, them, title = 'Highlights'
   } finally { cleanup(); }
 }
 
-return {pickMime,makeHighlightsVideo};})();
+return {pickMime,drawStats,makeHighlightsVideo};})();
 const {SOURCES,fuse,soundEvents,speechEvents,geminiEvents,GOAL_WORDS,isGoalTalk,isStrongGoalTalk}=(()=>{
 // Pitchside smart goal finder: merges every weak signal (scoreboard, ball + kick-off, crowd noise, cheering/whistle
 // sound classifier, spoken "goal") into one ranked list. If the final score is known, the best N are picked.
@@ -1861,14 +2026,15 @@ function toast(msg) {
 function go(hash) { if (location.hash === hash) route(); else location.hash = hash; }
 
 // ============================================================ state
-const S = { file: null, fileUrl: null, fileFor: null, rate: 4, ballFps: 2, ball: { name: null, buffer: null, sess: null }, scanning: null, reel: null, clipEnd: null, clipId: null, tick: null, ourSeek: false, pendingPlay: null };
+const S = { file: null, fileUrl: null, fileFor: null, rate: 4, ballFps: 2, ball: { name: null, buffer: null, sess: null }, scanning: null, reel: null, clipEnd: null, clipId: null, tick: null, ourSeek: false, pendingPlay: null, sel: null, filter: 'all', vt: 0, vtFor: null, refresh: null, onChange: null };
 const haveFile = m => S.file && S.fileFor === m.id;
 function setFile(m, file) {
   if (S.fileUrl) URL.revokeObjectURL(S.fileUrl);
   S.file = file; S.fileUrl = URL.createObjectURL(file); S.fileFor = m.id;
 }
 function unmount() {
-  clearInterval(S.tick); S.tick = null; S.reel = null; S.clipEnd = null; S.clipId = null;
+  clearInterval(S.tick); S.tick = null; S.reel = null; S.clipEnd = null; S.clipId = null; S.refresh = null; S.onChange = null;
+  app.classList.remove('wide');
 }
 
 // ============================================================ tagging model
@@ -1923,7 +2089,6 @@ function wireMenu(m) {
   b.onclick = () => sheet(`${m.us} v ${m.them}`, [
     ...(m.events ? [{ label: 'Download match data (.csv)', fn: () => downloadMatchData(m) }] : []),
     ...(m.events ? [{ label: 'Export match data (.json)', fn: () => exportMatch(m) }, { label: 'Copy match data (if export is blocked)', fn: () => copyMatch(m) }] : []),
-    ...(m.events && haveFile(m) ? [{ label: 'Scan again', fn: () => { m.events = null; m.curves = null; m.raw = null; DB.saveMatch(m).then(() => go(`#/match/${m.id}`)); } }] : []),
     { label: 'Delete this match', danger: true, fn: async () => { if (confirm('Delete this match and its tags from this device?')) { await DB.deleteMatch(m.id); toast('Match deleted'); go('#/'); } } },
   ]);
 }
@@ -1981,15 +2146,16 @@ function wireSeg(id, fn) {
   g.onclick = ev => { const b = ev.target.closest('button'); if (!b) return; $$('button', g).forEach(x => x.classList.toggle('on', x === b)); fn(b.dataset.v); };
 }
 
+
 // ============================================================ routes
 async function route() {
   unmount();
   window.scrollTo(0, 0);
   const parts = (location.hash.replace(/^#/, '') || '/').split('/').filter(Boolean);
   if (!parts.length) return home();
-  if (parts[0] === 'new') return newMatch();
+  if (parts[0] === 'new') return videoTab(null);
   if (parts[0] === 'help') return help();
-  if (parts[0] === 'match' && parts[1]) return matchView(parts[1], parts[2] || 'summary');
+  if (parts[0] === 'match' && parts[1]) return matchView(parts[1], parts[2]);
   return home();
 }
 window.addEventListener('hashchange', route);
@@ -1999,143 +2165,180 @@ async function home() {
   const ms = await DB.allMatches();
   const cards = ms.map(m => {
     const st = stats(m), tagged = taggedCount(m);
-    const score = tagged && (st.us.goals || st.them.goals || tagged > 0)
-      ? `<span class="sc"><b class="us">${st.us.goals}</b><i>–</i><b class="them">${st.them.goals}</b></span>` : `<span class="sc dim">${m.events ? 'Not tagged yet' : 'Not scanned'}</span>`;
+    const score = tagged
+      ? `<span class="sc"><b class="us">${st.us.goals}</b><i>–</i><b class="them">${st.them.goals}</b></span>` : `<span class="sc dim">${m.events && m.events.length ? 'Not reviewed yet' : 'No highlights yet'}</span>`;
     return `<a class="match" href="#/match/${m.id}">
-      <div><b>${esc(m.us)}</b><span class="v">v</span><b>${esc(m.them)}</b><small>${fmtDate(m.date)}${m.events ? ` · ${m.events.filter(e => e.type !== 'skip').length} moments` : ''}</small></div>${score}</a>`;
+      <div><b>${esc(m.us)}</b><span class="v">v</span><b>${esc(m.them)}</b><small>${fmtDate(m.date)}${tagged ? ` · ${tagged} highlight${tagged === 1 ? '' : 's'}` : ''}</small></div>${score}</a>`;
   }).join('');
   app.innerHTML = `<header class="top home"><div class="brand"><span class="mark"></span><b>Pitchside</b></div><a class="icon" href="#/help" aria-label="How it works">?</a></header>
   <main class="stack">
     ${ms.length ? `<h2 class="eyebrow">Your matches</h2><div class="list">${cards}</div>` : `
       <section class="hero">
         <h1>Match highlights and stats, free.</h1>
-        <p>Pick a match recording. Pitchside finds the moments worth watching, you tag what happened, and it builds the stats and a highlight reel. Your video never leaves your phone.</p>
-        <ol class="steps"><li><b>Choose</b> the match video</li><li><b>Scan</b> it (about 15 minutes per hour of footage)</li><li><b>Tag</b> goals, shots and saves</li></ol>
+        <p>Pick a match recording. Pitchside finds the goals and other highlights (Gemini AI can watch the whole match for you), you check them, and it builds the stats and a highlights video with a score graphic.</p>
+        <ol class="steps"><li><b>Video</b>: choose the match recording</li><li><b>Find highlights</b>: let Gemini or the clues find them</li><li><b>Review &amp; export</b>: check them, then make the video</li></ol>
       </section>`}
     <a class="primary big" href="#/new">New match</a>
   </main>`;
 }
 
-// ============================================================ new match
-function newMatch() {
-  const today = new Date().toISOString().slice(0, 10);
-  let dir = lsGet('ps_dir', 'right');
-  app.innerHTML = `${topBar('New match')}<form id="nf" class="stack" autocomplete="off">
-    <label class="fld"><span>Your team</span><input name="us" required value="${esc(lsGet('ps_us', ''))}" placeholder="e.g. Norton and Stockton"></label>
-    <label class="fld"><span>Opponent</span><input name="them" required placeholder="e.g. Pools Youth"></label>
-    <label class="fld"><span>Date</span><input type="date" name="date" value="${today}" required></label>
-    <div class="fld"><span>Your team attacks (1st half)</span>${seg('dirSeg', [['left', '&#8592; Left'], ['right', 'Right &#8594;']], dir)}<small>As you look at the video. It flips at half-time.</small></div>
-    <label class="fld"><span>Half-time at (minutes into the video)</span><input type="number" name="ht" min="1" step="0.5" inputmode="decimal" placeholder="Optional - defaults to the middle"></label>
-    <div class="fld"><span>Match video</span>
-      <label class="filebtn"><input type="file" id="vf" accept="video/*" hidden><span id="vfName">Choose video&hellip;</span></label>
-      <small>Stays on this device. Nothing is uploaded.</small></div>
-    <button class="primary" type="submit" id="nfGo">Continue</button></form>`;
-  wireSeg('dirSeg', v => { dir = v; });
-  let file = null;
-  $('#vf').onchange = e => { file = e.target.files[0] || null; $('#vfName').textContent = file ? file.name : 'Choose video…'; };
-  $('#nf').onsubmit = async ev => {
-    ev.preventDefault();
-    if (!file) return toast('Choose the match video first');
-    const f = new FormData(ev.target), btn = $('#nfGo');
-    btn.disabled = true; btn.textContent = 'Reading video…';
-    let info;
-    try { info = await probeVideo(file); } catch (_) { btn.disabled = false; btn.textContent = 'Continue'; return toast("This browser can't read that video. Try an .mp4 file."); }
-    const m = { id: DB.newId(), us: f.get('us').trim(), them: f.get('them').trim(), date: f.get('date'), attackDir: dir,
-      halfTime: f.get('ht') ? parseFloat(f.get('ht')) * 60 : 0, createdAt: Date.now(),
-      video: { name: file.name, size: file.size, duration: info.duration }, events: null, curves: null, raw: null };
-    lsSet('ps_us', m.us); lsSet('ps_dir', dir);
-    await DB.saveMatch(m); setFile(m, file);
-    go(`#/match/${m.id}`);
-  };
-}
-
 // ============================================================ help
 function help() {
   app.innerHTML = `${topBar('How it works')}<main class="stack prose">
-    <section class="card"><h3>The idea</h3><p>Pitchside looks for the moments that <em>felt</em> big: crowd noise, whistles, fast breaks, the camera sweeping across the pitch. It can't tell a goal from a corner by itself, so you check each moment and tag it. The stats, chart and highlight reel are built from your tags.</p></section>
+    <section class="card"><h3>The idea</h3><p>Pitchside has four steps along the top: <b>Video</b>, <b>Find highlights</b>, <b>Review highlights</b> and <b>Export</b>. It builds the stats, the match graphic and the highlights video from the highlights you confirm.</p></section>
     <section class="card"><h3>Using it</h3><ol>
-      <li><b>New match</b>: names, date and which way you attack, then pick the video.</li>
-      <li><b>Scan</b>: the video plays silently at speed while it listens and watches. Keep the screen on. Use Quick (&times;8) for long matches.</li>
-      <li><b>Moments</b>: tap play on each one, then say what happened and which team. Skip anything that isn't a highlight. Use <em>Add moment</em> for anything it missed.</li>
-      <li><b>Summary</b>: score, match flow and head-to-head stats appear as you tag.</li></ol></section>
+      <li><b>Video</b>: names, date, which way you attack, the final score if you know it, and the match recording.</li>
+      <li><b>Find highlights</b>: the best option is <b>Gemini</b>, Google&rsquo;s AI, which watches the match and lists the goals (and, if you ask, shots, saves, corners and fouls). Other options listen to the crowd and whistles, follow the ball or read the scoreboard. Each one can be opened or closed.</li>
+      <li><b>Review highlights</b>: watch each one, fix who it was for, trim the clip, or skip it. The Sky-style stats graphic updates as you go.</li>
+      <li><b>Export</b>: goals only or all highlights, with or without a scoreboard, then make the video.</li></ol></section>
     <section class="card"><h3>Good to know</h3><ul>
-      <li>Your video is never uploaded. Only names, tags and the scan results are saved, on this device.</li>
-      <li>After you close the app, pick the video file again to watch clips. Tags stay.</li>
-      <li>Too few or too many moments? Use the Sensitivity control on the Moments tab, no rescan needed.</li>
-      <li>Match flow is an estimate from camera movement. It works best when the camera follows the play or covers the whole pitch.</li>
-      <li>Works offline once opened. Not yet tested on a lot of real match footage, so expect to tweak.</li></ul></section>
-    <section class="card"><h3>Install it</h3><p><b>iPhone:</b> Share &rarr; Add to Home Screen.<br><b>Android:</b> menu &rarr; Install app.</p></section>
+      <li>Your video stays on your computer unless you choose <b>Ask Gemini</b>, which uploads it to Google using your key and deletes it again afterwards.</li>
+      <li>Highlights, tags and scan results are saved on this device. After you close the app, pick the video file again to watch clips.</li>
+      <li>Gemini&rsquo;s shots, saves, corners and fouls are guesses, so check them in Review.</li>
+      <li>Use Chrome or Edge on a computer. The video export plays the clips in real time, so a 3 minute video takes about 3 minutes.</li>
+      <li>Works offline once opened (except Gemini).</li></ul></section>
   </main>`;
 }
 
-// ============================================================ match view
+// ============================================================ the match workspace (4 steps)
+const TABS = [['video', 'Video'], ['find', 'Find highlights'], ['review', 'Review highlights'], ['export', 'Export']];
+const isHl = e => e && e.type !== 'skip' && !!(e.type || e.manual);
+const hlList = m => (m.events || []).filter(isHl).sort((a, b) => a.time - b.time);
+
 async function matchView(id, tab) {
   const m = await DB.getMatch(id);
   if (!m) return go('#/');
   if (S.scanning && S.scanning.id === id) return scanView(m);
-  if (!m.events) return setupView(m);
-  app.innerHTML = `${topBar(`${m.us} v ${m.them}`, fmtDate(m.date), { menu: true })}
-    <nav class="tabs"><a href="#/match/${id}/summary" class="${tab !== 'moments' ? 'on' : ''}">Summary</a>
-    <a href="#/match/${id}/moments" class="${tab === 'moments' ? 'on' : ''}">Moments <i class="count">${taggedCount(m)}/${m.events.filter(e => e.type !== 'skip').length}</i></a></nav>
-    <main id="tabBody" class="stack"></main>`;
-  wireMenu(m);
-  if (tab === 'moments') momentsTab(m); else summaryTab(m);
+  if (tab === 'summary' || tab === 'moments') tab = 'review';
+  if (!m.events) { m.events = []; }
+  if (!m.duration) m.duration = (m.video && m.video.duration) || 0;
+  if (!m.half) m.half = m.halfTime || m.duration / 2;
+  if (!TABS.some(t => t[0] === tab)) tab = hlList(m).length ? 'review' : (haveFile(m) ? 'find' : 'video');
+  await restoreBallModel();
+  if (tab === 'video') return videoTab(m);
+  if (tab === 'find') return findTab(m);
+  if (tab === 'export') return exportTab(m);
+  return reviewTab(m);
 }
 
-// ------------------------------------------------------------ setup / scan
-async function setupView(m) {
-  await restoreBallModel();
+function shell(m, tab, left, right) {
+  app.classList.add('wide');
+  const n = m ? hlList(m).length : 0;
+  app.innerHTML = `<header class="wsnav"><a class="brand" href="#/"><span class="mark"></span><b>Pitchside</b></a>
+    <nav aria-label="Steps">${TABS.map(([k, l], i) => {
+      const on = k === tab, inner = `<i>${i + 1}</i>${l}${k === 'review' && m ? `<em class="count" id="revCount">${n}</em>` : ''}`;
+      return m || k === 'video' ? `<a href="${m ? `#/match/${m.id}/${k}` : '#/new'}" class="${on ? 'on' : ''}" ${on ? 'aria-current="page"' : ''}>${inner}</a>` : `<span class="dis">${inner}</span>`;
+    }).join('')}</nav>
+    <div class="wsmeta">${m ? `<div><b>${esc(m.us)} v ${esc(m.them)}</b><small>${fmtDate(m.date)}</small></div><button class="icon" id="menuBtn" aria-label="More options">&#8943;</button>` : ''}<a class="icon" href="#/help" aria-label="How it works">?</a></div></header>
+    <main class="ws ws-${tab}"><section class="wsL" id="wsL">${left}</section><section class="wsR" id="wsR">${right}</section></main>`;
+  if (m) wireMenu(m);
+}
+function updateCount(m) { const c = $('#revCount'); if (c) c.textContent = hlList(m).length; }
+
+function playerHtml(m, { sb = false } = {}) {
   const has = haveFile(m);
-  app.innerHTML = `${topBar(`${m.us} v ${m.them}`, fmtDate(m.date), { menu: true })}<main class="stack">
-    <section class="card">
-      <h2>Scan the match</h2>
-      <p class="lead">Pitchside plays the video quickly and silently, listening for crowd noise and whistles and watching for fast play, to flag the moments worth reviewing.</p>
-      ${has ? `<div class="filechip"><b>${esc(S.file.name)}</b><small>${clock(m.video.duration)} long</small></div>`
-            : `<div class="filechip warn"><b>Attach the match video to continue</b><small>${esc(m.video && m.video.name || '')}</small></div>
-               <label class="btn ghost filebtn"><input id="vfile" type="file" accept="video/*" hidden>Choose video</label>`}
-      <div class="fld"><span>Scan speed</span>${seg('rateSeg', [[4, 'Thorough &middot; &times;4'], [8, 'Quick &middot; &times;8']], S.rate)}<small id="eta"></small></div>
-      <button class="primary" id="goScan" ${has ? '' : 'disabled'}>Scan match</button>
-      <p class="hint">Keep this screen open and awake while it scans. Nothing leaves your device.</p>
-    </section>
-    <section class="card quiet"><h3>Is there a scoreboard on the video?</h3>
-      <p>Optional. Mark where the two score numbers are and the scan will notice every time one changes. That gives you the goal times and who scored, automatically.</p>
-      <p class="note" id="sbState">${m.scoreBoxes ? 'Score area set. It will be read during the scan.' : ''}</p>
-      <button class="ghost wide" id="markScore" ${has ? '' : 'disabled'}>${m.scoreBoxes ? 'Change the score area' : 'Mark the score area'}</button></section>
-    <section class="card quiet" id="smartCard"><h3>Smart goal finder (beta)</h3>
-      <p>Combines every clue: the scoreboard, ball tracking, crowd noise, cheering and whistles, and anyone shouting &ldquo;goal&rdquo;. Tell it the final score and it keeps that many of the most likely goals.</p>
-      <button class="ghost wide" id="goSmart">Open the smart goal finder</button></section>
-    <section class="card quiet" id="ballCard"><h3>Track the ball (beta)</h3>
-      <p>Uses a football ball detector that runs in your browser to find the goals itself: the ball reaching a goal, then a kick-off from the centre spot. It is slow but needs no tagging. You need a ball model file (<code>.onnx</code>), loaded once.</p>
-      <p class="note" id="ballState">${ballStateText()}</p>
-      <label class="btn ghost filebtn"><input id="ballModel" type="file" accept=".onnx" hidden>${S.ball.name ? 'Use a different model file' : 'Choose the ball model (.onnx)'}</label>
-      <div class="fld"><span>Detail</span>${seg('ballSeg', [[1, 'Quick &middot; 1/s'], [2, 'Balanced &middot; 2/s'], [3, 'Thorough &middot; 3/s']], S.ballFps)}<small id="ballEta"></small></div>
-      <button class="ghost wide" id="goBall" ${has && S.ball.name ? '' : 'disabled'}>Track the ball and find goals</button></section>
-    <section class="card quiet"><h3>Skip the scan?</h3>
-      <p>If you already know when the goals were scored, skip scanning and just type the times in. Pitchside then builds the highlights video with a score graphic.</p>
-      <button class="ghost wide" id="skipScan">Skip scan, enter goal times</button></section>
-    <section class="card quiet"><h3>Already analysed on a computer?</h3>
-      <p>Import the <code>events.json</code> made by the desktop script.</p>
-      <label class="btn ghost"><input id="ifile" type="file" accept=".json,application/json" hidden>Import analysis</label></section>
-  </main>`;
-  wireMenu(m);
-  const eta = () => { const d = m.video && m.video.duration; $('#eta').textContent = d ? `About ${Math.max(1, Math.ceil(d / S.rate / 60))} min` : ''; };
-  eta();
-  wireSeg('rateSeg', v => { S.rate = +v; eta(); });
-  const vf = $('#vfile');
-  if (vf) vf.onchange = e => attachFile(m, e.target.files[0], () => setupView(m));
-  const gb = $('#goScan'); if (gb) gb.onclick = () => startScan(m);
-  const bm = $('#ballModel'); if (bm) bm.onchange = e => chooseBallModel(m, e.target.files[0]);
-  wireSeg('ballSeg', v => { S.ballFps = +v; ballEta(m); }); ballEta(m);
-  const gbl = $('#goBall'); if (gbl) gbl.onclick = () => runBallScan(m);
-  const gsm = $('#goSmart'); if (gsm) gsm.onclick = () => smartFinder(m);
-  const ms = $('#markScore'); if (ms) ms.onclick = () => markScoreArea(m, () => setupView(m));
-  $('#skipScan').onclick = async () => { m.events = []; m.curves = null; m.raw = null; m.duration = m.video.duration; m.half = m.halfTime || m.duration / 2; await DB.saveMatch(m); go(`#/match/${m.id}/moments`); };
-  $('#ifile').onchange = async e => {
-    const f = e.target.files[0]; if (!f) return;
-    try { await importAnalysis(m, f); await DB.saveMatch(m); toast('Analysis imported'); go(`#/match/${m.id}/moments`); }
-    catch (err) { toast(err.message || 'Could not read that file'); }
+  return `<div id="playerWrap" class="pl">${has ? `<div class="vwrap"><video id="vid" src="${S.fileUrl}" controls playsinline preload="metadata"></video>${sb ? '<div class="sbov" id="sbov"></div>' : ''}</div>
+      <div class="reelbar" id="reelbar" hidden><button data-r="prev" aria-label="Previous">&#8249;</button><span id="reelTxt"></span><button data-r="next" aria-label="Next">&#8250;</button><button data-r="stop" class="stop">Stop</button></div>
+      <div class="tlbox"><div class="tl" id="tl" aria-label="Timeline. Click to jump."><i class="pos" id="tlpos"></i><div id="tlmarks"></div></div>
+        <div class="tlrow"><button class="ghost sm" data-seek="-10">&minus;10 s</button><span id="vtime">0:00</span><button class="ghost sm" data-seek="10">+10 s</button></div></div>`
+    : `<div class="attach"><p>Attach the match video to watch it here.</p><label class="btn primary"><input id="vfile" type="file" accept="video/*" hidden>Choose video</label></div>`}</div>`;
+}
+function drawMarks(m) {
+  const el = $('#tlmarks'); if (!el) return;
+  const d = m.duration || (m.video && m.video.duration) || 1;
+  el.innerHTML = hlList(m).map(e => `<button class="mk2 ${e.side || ''}${e.type === 'goal' ? ' goal' : ''}${S.sel === e.id ? ' sel' : ''}" style="left:${Math.min(100, e.time / d * 100).toFixed(2)}%" data-id="${e.id}" aria-label="${clock(e.time)} ${TYPES[e.type] ? TYPES[e.type].label : 'highlight'}"></button>`).join('');
+}
+function wirePlayer(m, opts = {}) {
+  const vf = $('#vfile'); if (vf) vf.onchange = e => attachFile(m, e.target.files[0], () => go(location.hash));
+  const wrap = $('#playerWrap');
+  const v = $('#vid');
+  if (wrap) wrap.onclick = ev => {
+    const r = ev.target.closest('[data-r]');
+    if (r) { if (r.dataset.r === 'next') nextReel(1); else if (r.dataset.r === 'prev') nextReel(-1); else stopReel(); return; }
+    const sk = ev.target.closest('[data-seek]');
+    if (sk && v) { S.reel = null; updateReelBar(); v.currentTime = Math.max(0, v.currentTime + +sk.dataset.seek); }
+  };
+  drawMarks(m);
+  if (!v) return;
+  const dur = () => m.duration || v.duration || 1;
+  const tl = $('#tl');
+  tl.onclick = ev => {
+    const mk = ev.target.closest('[data-id]');
+    if (mk) { if (opts.onMark) opts.onMark(+mk.dataset.id); return; }
+    const r = tl.getBoundingClientRect(); S.reel = null; updateReelBar();
+    v.currentTime = Math.max(0, Math.min(1, (ev.clientX - r.left) / r.width)) * dur();
+  };
+  if (S.vtFor !== m.id) S.vt = 0;
+  S.vtFor = m.id;
+  v.addEventListener('loadedmetadata', () => { if (S.vt > 0 && S.vt < v.duration) v.currentTime = S.vt; }, { once: true });
+  v.addEventListener('seeked', () => { if (S.ourSeek) { S.ourSeek = false; return; } S.clipEnd = null; if (S.reel) { S.reel = null; updateReelBar(); } });
+  S.tick = setInterval(() => {
+    const t = v.currentTime; S.vt = t;
+    const vt = $('#vtime'); if (vt) vt.textContent = `${clock(t)} / ${clock(dur())}`;
+    const p = $('#tlpos'); if (p) p.style.left = Math.min(100, t / dur() * 100) + '%';
+    if (opts.onTick) opts.onTick(t);
+    if (S.clipEnd != null && t >= S.clipEnd - 0.05) { if (S.reel) nextReel(); else { v.pause(); S.clipEnd = null; } }
+  }, 120);
+}
+
+// ------------------------------------------------------------ step 1: video
+function videoTab(m) {
+  const today = new Date().toISOString().slice(0, 10), isNew = !m;
+  let dir = m ? m.attackDir || 'right' : lsGet('ps_dir', 'right'), file = null, previewUrl = null;
+  const has = m && haveFile(m);
+  const form = `<form id="nf" class="card wsForm" autocomplete="off"><h2>${isNew ? 'New match' : 'The match'}</h2>
+    <label class="fld"><span>Your team</span><input name="us" required value="${esc(m ? m.us : lsGet('ps_us', ''))}" placeholder="e.g. Norton and Stockton"></label>
+    <label class="fld"><span>Opponent</span><input name="them" required value="${esc(m ? m.them : '')}" placeholder="e.g. Pools Youth"></label>
+    <label class="fld"><span>Date</span><input type="date" name="date" value="${esc(m ? m.date : today)}" required></label>
+    <div class="fld"><span>Your team attacks (1st half)</span>${seg('dirSeg', [['left', '&#8592; Left'], ['right', 'Right &#8594;']], dir)}<small>As you look at the video. It flips at half-time.</small></div>
+    <div class="fld"><span>Final score (optional)</span><div class="fs"><label>${esc(m ? m.us : 'Your team')}<input name="fu" type="number" inputmode="numeric" min="0" max="30" value="${m && m.finalUs != null ? m.finalUs : ''}"></label>
+      <label>${esc(m ? m.them : 'Opponent')}<input name="ft" type="number" inputmode="numeric" min="0" max="30" value="${m && m.finalThem != null ? m.finalThem : ''}"></label></div>
+      <small>If you know it, Gemini and the other clues use it to check they have found every goal.</small></div>
+    <div class="fld"><span>Match video</span>
+      <label class="filebtn"><input type="file" id="vf" accept="video/*" hidden><span id="vfName">${has ? esc(S.file.name) : (m && m.video ? 'Choose the video again: ' + esc(m.video.name) : 'Choose video&hellip;')}</span></label>
+      <small>It stays on this computer unless you choose Ask Gemini in the next step, which uploads it to Google and deletes it afterwards.</small></div>
+    <button class="primary" type="submit" id="nfGo">${isNew ? 'Continue' : 'Save and find highlights'}</button></form>`;
+  const prev = `<div class="card vprev" id="vprev">${has ? `<video controls playsinline preload="metadata" src="${S.fileUrl}"></video>` : '<div class="attach"><p id="vprevTxt">Choose the match video to see it here.</p></div>'}</div>`;
+  shell(m, 'video', form, prev);
+  wireSeg('dirSeg', v => { dir = v; });
+  const showPreview = f => {
+    if (previewUrl) URL.revokeObjectURL(previewUrl);
+    previewUrl = URL.createObjectURL(f);
+    $('#vprev').innerHTML = `<video controls playsinline preload="metadata" src="${previewUrl}"></video>`;
+  };
+  $('#vf').onchange = e => {
+    file = e.target.files[0] || null;
+    if (!file) return;
+    $('#vfName').textContent = file.name; showPreview(file);
+    if (m && m.video && m.video.size && file.size !== m.video.size && !confirm('This looks like a different file from the one you used before. Use it anyway?')) { file = null; return go(location.hash); }
+  };
+  $('#nf').onsubmit = async ev => {
+    ev.preventDefault();
+    const f = new FormData(ev.target), btn = $('#nfGo');
+    const fu = parseInt(f.get('fu'), 10), ft = parseInt(f.get('ft'), 10), haveFinal = fu >= 0 && ft >= 0;
+    if (isNew) {
+      if (!file) return toast('Choose the match video first');
+      btn.disabled = true; btn.textContent = 'Reading video…';
+      let info;
+      try { info = await probeVideo(file); } catch (_) { btn.disabled = false; btn.textContent = 'Continue'; return toast("This browser can't read that video. Try an .mp4 file."); }
+      const nm = { id: DB.newId(), us: f.get('us').trim(), them: f.get('them').trim(), date: f.get('date'), attackDir: dir, halfTime: 0, createdAt: Date.now(),
+        video: { name: file.name, size: file.size, duration: info.duration }, events: [], duration: info.duration, half: info.duration / 2, curves: null, raw: null,
+        finalUs: haveFinal ? fu : null, finalThem: haveFinal ? ft : null };
+      lsSet('ps_us', nm.us); lsSet('ps_dir', dir);
+      await DB.saveMatch(nm); setFile(nm, file);
+      return go(`#/match/${nm.id}/find`);
+    }
+    m.us = f.get('us').trim(); m.them = f.get('them').trim(); m.date = f.get('date'); m.attackDir = dir;
+    m.finalUs = haveFinal ? fu : null; m.finalThem = haveFinal ? ft : null;
+    if (file) {
+      btn.disabled = true; btn.textContent = 'Reading video…';
+      try { const info = await probeVideo(file); m.video = { name: file.name, size: file.size, duration: info.duration }; m.duration = info.duration; setFile(m, file); }
+      catch (_) { btn.disabled = false; btn.textContent = 'Save and find highlights'; return toast("This browser can't read that video. Try an .mp4 file."); }
+    }
+    await DB.saveMatch(m); go(`#/match/${m.id}/find`);
   };
 }
+
 function attachFile(m, f, after) {
   if (!f) return;
   if (m.video && m.video.size && f.size !== m.video.size && !confirm('This looks like a different file from the one you scanned. Use it anyway?')) return;
@@ -2163,6 +2366,7 @@ function drawSpark(vals) {
   vals.slice(-120).forEach((v, i) => { const bh = Math.max(2, h * v / mx); ctx.fillRect(i * bw, h - bh, Math.max(1, bw - 1), bh); });
 }
 function scanView(m) {
+  app.classList.remove('wide');
   app.innerHTML = `${topBar(`${m.us} v ${m.them}`, 'Scanning', { back: '#/' })}<main class="stack">
     <section class="card scan">
       <h2 id="spct">0%</h2>
@@ -2197,7 +2401,7 @@ async function startScan(m) {
     });
     m.raw = res.raw; m.duration = res.duration; m.hasAudio = res.hasAudio; m.partialTo = res.partial ? res.coveredTo : null;
     const out = processSignals(res.raw, res.duration, { halfTime: m.halfTime, attackDir: m.attackDir, sampleFps: res.sampleFps });
-    m.events = out.events; m.curves = out.curves; m.half = out.half; m.sens = 'normal';
+    if (!m.events) m.events = []; m.curves = out.curves; m.half = out.half;
     await DB.saveMatch(m);
     S.scanning = null;
     m.frameCoverage = res.frameCoverage;
@@ -2209,12 +2413,12 @@ async function startScan(m) {
     }
     await DB.saveMatch(m);
     if (res.frameCoverage != null && res.frameCoverage < 0.9) setTimeout(() => toast('Part of the video was not scanned properly. Keep this tab in front and scan again.'), 2600);
-    toast(res.partial ? `Scan stopped early at ${clock(res.coveredTo)}` : `Found ${m.events.length} moments to review`);
-    go(`#/match/${m.id}/moments`);
+    toast(res.partial ? `Scan stopped early at ${clock(res.coveredTo)}` : 'Scan finished. Now press Work out the goals.');
+    go(`#/match/${m.id}/find`);
   } catch (err) {
     S.scanning = null;
     if (err && err.name === 'AbortError') toast('Scan cancelled'); else toast(err.message || 'The scan failed');
-    go(`#/match/${m.id}`);
+    go(`#/match/${m.id}/find`);
   }
 }
 
@@ -2231,8 +2435,7 @@ function flowChart(m) {
   for (let t = 0; t <= dur + 1; t += step) ticks += `<text x="${X(t).toFixed(1)}" y="256" text-anchor="${t === 0 ? 'start' : 'middle'}">${Math.round(t / 60)}'</text>`;
   const hx = X(m.half || dur / 2).toFixed(1);
   let marks = '';
-  for (const e of m.events) {
-    if (e.type === 'skip') continue;
+  for (const e of hlList(m)) {
     if (e.type && e.side) {
       const T = TYPES[e.type], y = e.side === 'us' ? 15 : 226;
       marks += `<g class="mk ${e.side}${T.hollow ? ' hollow' : ''}" data-id="${e.id}"><circle r="17" cx="${X(e.time).toFixed(1)}" cy="${y}" fill="transparent"/>
@@ -2249,96 +2452,12 @@ function flowChart(m) {
     ${ticks}<text x="${hx}" y="248" text-anchor="middle" class="htl">HT</text>
     ${marks}</svg>`;
 }
-function h2hRow(label, a, b) {
-  const mx = Math.max(a, b, 1);
-  return `<div class="h2h"><div class="hd"><b class="us">${a}</b><span>${label}</span><b class="them">${b}</b></div>
-    <div class="bars"><div class="half l"><i style="width:${a / mx * 100}%"></i></div><div class="half r"><i style="width:${b / mx * 100}%"></i></div></div></div>`;
-}
-function summaryTab(m) {
-  const st = stats(m), tagged = taggedCount(m), total = m.events.filter(e => e.type !== 'skip').length;
-  const mean = a => a.reduce((s, v) => s + v, 0) / (a.length || 1);
-  const hasCurves = !!(m.curves && m.curves.us && m.curves.us.length);
-  const U = hasCurves ? mean(m.curves.us) : 0, T = hasCurves ? mean(m.curves.them) : 0, upct = Math.round(100 * U / ((U + T) || 1));
-  const pct = (n, d) => d ? Math.round(100 * n / d) + '%' : '–';
-  $('#tabBody').innerHTML = `
-    ${m.partialTo ? `<div class="notice">The scan stopped early at ${clock(m.partialTo)}, so later moments aren't covered.</div>` : ''}
-    <section class="score"><div class="side us"><b>${st.us.goals}</b><span>${esc(m.us)}</span></div><div class="dash">–</div><div class="side them"><b>${st.them.goals}</b><span>${esc(m.them)}</span></div></section>
-    ${tagged ? '' : `<div class="notice">Nothing tagged yet. <a href="#/match/${m.id}/moments">Review the ${total} moments</a> to fill in the score and stats.</div>`}
-    ${hasCurves ? `<section class="card"><div class="cardhd"><h3>Match flow</h3><div class="legend"><span class="us">${esc(m.us)}</span><span class="them">${esc(m.them)}</span></div></div>
-      <div id="chart" class="chart">${flowChart(m)}</div>
-      <div class="share"><span class="us" style="width:${upct}%">${upct}%</span><span class="them" style="width:${100 - upct}%">${100 - upct}%</span></div>
-      <p class="note">Estimated share of the play, from camera movement and crowd noise. Tap a marker to watch it.</p></section>` : ''}
-    <section class="card"><h3>Head to head</h3>
-      ${h2hRow('Goals', st.us.goals, st.them.goals)}${h2hRow('Shots', st.us.shots, st.them.shots)}${h2hRow('On target', st.us.sot, st.them.sot)}
-      ${h2hRow('Corners', st.us.corners, st.them.corners)}${h2hRow('Saves', st.us.saves, st.them.saves)}${h2hRow('Fouls', st.us.fouls, st.them.fouls)}
-      <div class="derived"><div><b>${pct(st.us.goals, st.us.shots)}</b><span>Our conversion</span></div><div><b>${pct(st.us.sot, st.us.shots)}</b><span>Our accuracy</span></div>
-      <div><b>${pct(st.them.goals, st.them.shots)}</b><span>Their conversion</span></div></div>
-      <p class="note">Built from the ${tagged} of ${total} moments you've tagged. A save counts as a shot on target for the other side.</p></section>
-    <button class="ghost wide" id="dlData">&#11015; Download match data (.csv)</button>
-    <a class="primary" href="#/match/${m.id}/moments">${tagged < total ? 'Review moments' : 'Play highlights'}</a>`;
-  $('#dlData').onclick = () => downloadMatchData(m);
-  if ($('#chart')) $('#chart').onclick = ev => {
-    const g = ev.target.closest('.mk'); if (!g) return;
-    S.pendingPlay = +g.dataset.id; go(`#/match/${m.id}/moments`);
-  };
-}
 
-// ------------------------------------------------------------ moments
-const LEVELS = { fewer: { minScore: 1.6, maxClipsMult: 0.6 }, normal: { minScore: 0.8, maxClipsMult: 1 }, more: { minScore: 0.2, maxClipsMult: 2.2 } };
-function momCard(e, playing) {
-  const tagged = e.type && e.type !== 'skip', skip = e.type === 'skip';
-  return `<article class="mom${skip ? ' skip' : ''}${playing ? ' playing' : ''}${tagged ? ' tagged' : ''}" data-id="${e.id}">
-    <div class="row"><button class="play" data-act="play" aria-label="Play moment at ${clock(e.time)}">&#9654;</button>
-      <div class="meta"><b>${clock(e.time)}</b><small>${esc(e.label)}</small></div>
-      <button class="ghost sm" data-act="skip">${skip ? 'Restore' : 'Skip'}</button></div>
-    ${skip ? '' : `<div class="tag"><select data-act="type" aria-label="What happened"><option value="">What happened?</option>
-      ${Object.entries(TYPES).map(([k, t]) => `<option value="${k}" ${e.type === k ? 'selected' : ''}>${t.label}</option>`).join('')}</select>
-      ${tagged ? `<div class="seg sm" data-act="side"><button data-side="us" class="${e.side === 'us' ? 'on' : ''}">Us</button><button data-side="them" class="${e.side === 'them' ? 'on' : ''}">Them</button></div>` : ''}</div>`}
-  </article>`;
-}
 function reelList(m) {
   const tagged = m.events.filter(e => e.type && e.type !== 'skip');
   const base = tagged.length ? tagged.filter(e => e.type !== 'foul') : m.events.filter(e => e.type !== 'skip');
   return [...base].sort((a, b) => a.time - b.time);
 }
-function renderMoments(m) {
-  const list = $('#momentList'); if (!list) return;
-  list.innerHTML = m.events.length ? m.events.map(e => momCard(e, S.clipId === e.id)).join('') : '<p class="note">No moments yet. Play the video and use “Add moment”.</p>';
-  const rl = reelList(m); const b = $('#playReel'); if (b) { b.textContent = `Play highlights (${rl.length})`; b.disabled = !rl.length; }
-  $$('.count').forEach(c => c.textContent = `${taggedCount(m)}/${m.events.filter(e => e.type !== 'skip').length}`);
-  updateVidInfo(m);
-}
-function needVideo() { toast('Attach the match video first'); const a = $('#playerWrap'); if (a) a.scrollIntoView({ behavior: 'smooth' }); }
-function playClip(e) {
-  const v = $('#vid'); if (!v) return needVideo();
-  S.clipEnd = e.end; S.clipId = e.id;
-  const goTo = () => { S.ourSeek = true; v.currentTime = e.start; v.play().catch(() => {}); };
-  if (v.readyState >= 1) goTo(); else v.addEventListener('loadedmetadata', goTo, { once: true });
-  $$('.mom').forEach(c => c.classList.toggle('playing', +c.dataset.id === e.id));
-}
-function updateReelBar() {
-  const bar = $('#reelbar'); if (!bar) return;
-  if (!S.reel) { bar.hidden = true; return; }
-  bar.hidden = false; $('#reelTxt').textContent = `Highlight ${S.reel.i + 1} of ${S.reel.list.length} · ${clock(S.reel.list[S.reel.i].time)}`;
-}
-function nextReel(step = 1) {
-  const r = S.reel; if (!r) return;
-  r.i += step; if (r.i < 0) r.i = 0;
-  if (r.i >= r.list.length) { stopReel(); return toast('Highlights finished'); }
-  playClip(r.list[r.i]); updateReelBar();
-}
-function stopReel() { S.reel = null; S.clipEnd = null; const v = $('#vid'); if (v) v.pause(); updateReelBar(); }
-
-function applySensitivity(m, key) {
-  const out = processSignals(m.raw, m.duration, { ...LEVELS[key], halfTime: m.halfTime, attackDir: m.attackDir, sampleFps: 2 });
-  const keep = m.events.filter(e => e.manual || e.type);
-  const merged = [...keep];
-  for (const f of out.events) if (keep.every(k => Math.abs(k.time - f.time) >= 30)) merged.push(f);
-  merged.sort((a, b) => a.time - b.time);
-  merged.forEach((e, i) => e.id = i + 1);
-  m.events = merged; m.sens = key;
-}
-
 
 // ------------------------------------------------------------ goals by time, scoreline, highlights video
 const goalsOf = m => m.events.filter(e => e.type === 'goal' && e.side).sort((a, b) => a.time - b.time);
@@ -2377,9 +2496,11 @@ function addMomentsFrom(m, list) {
     m.events.push({ id: 0, time: x.t, start: Math.max(0, x.t - 5), end: Math.min(dur, x.t + 8), score: null, label: TYPES[x.type].label, type: x.type, side: x.side, manual: false, fromGemini: true });
   }
 }
-function finishEventEdit(m) {
+function finishEventEdit(m, selE) {
+  const keep = selE === undefined ? m.events.find(e => e.id === S.sel) : selE;
   m.events.sort((a, b) => a.time - b.time); m.events.forEach((e, i) => e.id = i + 1);
-  DB.saveMatch(m); renderMoments(m); updateGoalStatus(m); updateVidInfo(m);
+  S.sel = keep ? keep.id : null;
+  DB.saveMatch(m); drawMarks(m); updateCount(m); if (S.onChange) S.onChange();
 }
 function addGoalsFromText(m) {
   const raw = $('#goalTimes').value; if (!raw.trim()) return toast('Type the goal times first');
@@ -2395,6 +2516,7 @@ function addGoalsFromText(m) {
   if (n) $('#goalTimes').value = '';
   toast(bad.length ? `Added ${n}. Could not read: ${bad.join(', ')}` : `Added ${n} goal${n === 1 ? '' : 's'}. Check who scored on each.`);
 }
+
 function clipsFor(m, mode) {
   const pre = m.preGoal ?? 10, post = m.postGoal ?? 10, dur = m.duration || 1e9;
   let list = m.events.filter(e => e.type && e.type !== 'skip' && e.type !== 'foul' && TYPES[e.type]).sort((a, b) => a.time - b.time);
@@ -2418,14 +2540,197 @@ function clipsFor(m, mode) {
   }
   return out;
 }
+
+// ------------------------------------------------------------ step 3: review highlights
+const FILTERS = [['all', 'All'], ['goal', 'Goals'], ['shots', 'Shots'], ['save', 'Saves'], ['corner', 'Corners'], ['foul', 'Fouls']];
+const inFilter = (e, f) => f === 'all' || (f === 'shots' ? (e.type === 'sot' || e.type === 'off') : f === 'skipped' ? e.type === 'skip' : e.type === f);
+function statRows(m) {
+  const st = stats(m);
+  return [['Goals', st.us.goals, st.them.goals], ['Shots', st.us.shots, st.them.shots], ['Shots on target', st.us.sot, st.them.sot],
+    ['Saves', st.us.saves, st.them.saves], ['Corners', st.us.corners, st.them.corners], ['Fouls', st.us.fouls, st.them.fouls]];
+}
+const statsData = m => ({ us: m.us, them: m.them, rows: statRows(m), title: 'MATCH STATS', sub: `${m.us} v ${m.them} · ${fmtDate(m.date)}` });
+function drawStatsCanvas(m) { const cv = $('#statsCv'); if (cv) drawStats(cv.getContext('2d'), cv.width, cv.height, statsData(m), 1); }
+function saveStatsPicture(m) {
+  const cv = document.createElement('canvas'); cv.width = 1600; cv.height = 800;
+  drawStats(cv.getContext('2d'), cv.width, cv.height, statsData(m), 1);
+  cv.toBlob(b => {
+    if (!b) return toast('Could not make the picture');
+    const a = document.createElement('a'); a.href = URL.createObjectURL(b); a.download = `${slug(m.us)}-v-${slug(m.them)}-stats.png`; a.style.display = 'none';
+    document.body.appendChild(a); a.click(); setTimeout(() => { a.remove(); URL.revokeObjectURL(a.href); }, 4000);
+    toast('Saved the stats picture to your Downloads');
+  }, 'image/png');
+}
+function hlRow(m, e) {
+  const sel = S.sel === e.id, T = TYPES[e.type], skipped = e.type === 'skip';
+  const who = e.side ? esc(e.side === 'us' ? m.us : m.them) : '';
+  const head = `<button class="hlHead" data-act="sel" aria-expanded="${sel}"><span class="dot ${e.side || 'none'}"></span><b>${clock(e.time)}</b>
+    <span class="hlType">${skipped ? 'Skipped' : T ? T.label : 'Pick what happened'}</span><span class="hlWho">${who || (skipped ? '' : 'Who?')}</span></button>`;
+  const body = !sel ? '' : skipped ? `<div class="hlBody"><div class="hlBtns"><button class="ghost sm" data-act="skip">Restore this highlight</button></div></div>` : `<div class="hlBody">
+      <div class="hlRow"><label>What happened<select data-act="type"><option value="">Pick…</option>${Object.entries(TYPES).map(([k, t]) => `<option value="${k}" ${e.type === k ? 'selected' : ''}>${t.label}</option>`).join('')}</select></label>
+        <div class="who"><span>Who</span><div class="seg sm" data-act="side"><button data-side="us" class="${e.side === 'us' ? 'on' : ''}">${esc(m.us)}</button><button data-side="them" class="${e.side === 'them' ? 'on' : ''}">${esc(m.them)}</button></div></div></div>
+      <div class="hlRow"><label>Clip starts<input data-act="start" value="${clock(e.start)}" inputmode="numeric"></label><label>Clip ends<input data-act="end" value="${clock(e.end)}" inputmode="numeric"></label></div>
+      <div class="hlBtns"><button class="primary sm" data-act="play">&#9654; Play clip</button><button class="ghost sm" data-act="skip">Skip this highlight</button></div></div>`;
+  return `<article class="hl${sel ? ' open' : ''}${S.clipId === e.id ? ' playing' : ''}" data-id="${e.id}">${head}${body}</article>`;
+}
+function renderReview(m) {
+  const list = $('#rvList'); if (!list) return;
+  const all = (m.events || []).filter(e => isHl(e) || e.type === 'skip').sort((a, b) => a.time - b.time);
+  const skipped = all.filter(e => e.type === 'skip').length;
+  const filters = skipped ? [...FILTERS, ['skipped', 'Skipped']] : FILTERS;
+  if (!filters.some(f => f[0] === S.filter)) S.filter = 'all';
+  const count = f => all.filter(e => (f === 'skipped' ? e.type === 'skip' : e.type !== 'skip') && inFilter(e, f)).length;
+  $('#rvChips').innerHTML = filters.map(([k, l]) => `<button class="fchip${S.filter === k ? ' on' : ''}" data-f="${k}">${l}<i>${count(k)}</i></button>`).join('');
+  const rows = all.filter(e => S.filter === 'skipped' ? e.type === 'skip' : e.type !== 'skip' && inFilter(e, S.filter));
+  list.innerHTML = rows.length ? rows.map(e => hlRow(m, e)).join('')
+    : `<p class="note empty">${all.length - skipped ? 'Nothing in this group.' : 'No highlights yet. Go to Find highlights, or watch the video and add one with the button below.'}</p>`;
+  const st = stats(m), open = (m.events || []).filter(e => e.type === 'goal' && !e.side).length;
+  const fin = m.finalUs != null && m.finalThem != null;
+  const mismatch = fin && (st.us.goals !== m.finalUs || st.them.goals !== m.finalThem) && !open;
+  $('#rvHead').innerHTML = `<div class="rvScore"><span class="us">${esc(m.us)}</span><b class="us">${st.us.goals}</b><i>–</i><b class="them">${st.them.goals}</b><span class="them">${esc(m.them)}</span></div>
+    <small>${hlList(m).length} highlight${hlList(m).length === 1 ? '' : 's'} found${fin ? ` · final score you entered ${m.finalUs}–${m.finalThem}` : ''}${open ? ` · ${open} goal${open === 1 ? ' needs' : 's need'} a team picking` : ''}</small>
+    ${mismatch ? `<div class="notice sm">The goals here (${st.us.goals}–${st.them.goals}) don&rsquo;t match the final score you entered. A goal may be missing or wrong.</div>` : ''}`;
+  drawMarks(m); drawStatsCanvas(m); updateCount(m);
+}
+function reviewTab(m) {
+  const hasCurves = !!(m.curves && m.curves.us && m.curves.us.length);
+  const left = `${playerHtml(m)}
+    <section class="statsBox"><div class="statsHd"><h3>Match stats</h3><button class="ghost sm" id="saveStats">Save as picture</button></div>
+      <canvas id="statsCv" width="1280" height="640" role="img" aria-label="Team stats comparison"></canvas>
+      <label class="chk"><input type="checkbox" id="statsEnd" ${m.statsEnd ? 'checked' : ''}><span>Add this graphic to the end of the highlights video</span></label></section>
+    ${hasCurves ? `<details class="card flowbox"><summary>Match flow</summary><div id="chart" class="chart">${flowChart(m)}</div><p class="note">Estimated share of the play, from camera movement and crowd noise. Click a marker to jump to it.</p></details>` : ''}`;
+  const right = `<div class="rv"><div class="rvHeadWrap" id="rvHead"></div><div class="chips2" id="rvChips"></div><div class="rvList" id="rvList"></div>
+    <div class="rvFoot"><div class="rvAdd"><button class="ghost sm full" id="addHl" ${haveFile(m) ? '' : 'disabled'}>+ Add a highlight at the current time</button>
+      <button class="ghost sm" id="playReel" ${haveFile(m) ? '' : 'disabled'}>&#9654; Play all</button><button class="ghost sm" id="goalUs" ${haveFile(m) ? '' : 'disabled'}>Goal: ${esc(m.us)}</button><button class="ghost sm" id="goalThem" ${haveFile(m) ? '' : 'disabled'}>Goal: ${esc(m.them)}</button></div>
+      <a class="primary" href="#/match/${m.id}/export">Next: export</a></div></div>`;
+  shell(m, 'review', left, right);
+  const select = (id, play) => {
+    S.sel = S.sel === id && !play ? null : id;
+    renderReview(m);
+    const e = m.events.find(x => x.id === id), row = e && $(`.hl[data-id="${id}"]`);
+    if (S.sel === id && e) { const v = $('#vid'); if (v && !play) { S.ourSeek = true; v.currentTime = Math.max(0, e.start); } if (row) row.scrollIntoView({ block: 'nearest', behavior: 'smooth' }); }
+  };
+  wirePlayer(m, { onMark: id => select(id, true) });
+  S.onChange = () => renderReview(m);
+  renderReview(m);
+  if (S.pendingPlay != null) { const e = m.events.find(x => x.id === S.pendingPlay); S.pendingPlay = null; if (e) select(e.id, true); }
+  const ch = $('#chart'); if (ch) ch.onclick = ev => { const g = ev.target.closest('.mk'); if (g) select(+g.dataset.id, true); };
+  $('#statsEnd').onchange = ev => { m.statsEnd = ev.target.checked; DB.saveMatch(m); };
+  $('#saveStats').onclick = () => saveStatsPicture(m);
+  $('#rvChips').onclick = ev => { const b = ev.target.closest('[data-f]'); if (b) { S.filter = b.dataset.f; renderReview(m); } };
+  const quick = side => () => { const v = $('#vid'); if (!v) return needVideo(); const e = addGoalAt(m, v.currentTime, side); finishEventEdit(m, e); toast(`Goal marked at ${clock(v.currentTime)} for ${side === 'us' ? m.us : m.them}`); };
+  $('#goalUs').onclick = quick('us'); $('#goalThem').onclick = quick('them');
+  $('#playReel').onclick = () => {
+    if (!haveFile(m)) return needVideo();
+    const rl = reelList(m); if (!rl.length) return toast('Nothing to play yet');
+    S.reel = { list: rl, i: 0 }; playClip(rl[0]); updateReelBar();
+  };
+  $('#addHl').onclick = () => {
+    const v = $('#vid'); if (!v) return needVideo();
+    const t = v.currentTime, pre = m.preGoal ?? 10, post = m.postGoal ?? 10, dur = m.duration || t + post;
+    const e = { id: 0, time: t, start: Math.max(0, t - pre), end: Math.min(dur, t + post), score: null, label: 'Added by you', type: null, side: null, manual: true };
+    m.events.push(e); S.filter = 'all'; finishEventEdit(m, e); toast(`Added a highlight at ${clock(t)}. Say what happened.`);
+  };
+  const list = $('#rvList');
+  list.onclick = ev => {
+    const row = ev.target.closest('.hl'); if (!row) return;
+    const e = m.events.find(x => x.id === +row.dataset.id); if (!e) return;
+    const sideBtn = ev.target.closest('[data-side]'), actEl = ev.target.closest('[data-act]');
+    if (sideBtn) { e.side = sideBtn.dataset.side; if (e.guess) { e.label = 'Goal'; e.guess = false; } return finishEventEdit(m, e); }
+    if (!actEl) return;
+    const act = actEl.dataset.act;
+    if (act === 'sel') select(e.id);
+    else if (act === 'play') { S.reel = null; updateReelBar(); playClip(e); }
+    else if (act === 'skip') {
+      if (e.type === 'skip') { e.type = e.prevType || null; e.prevType = null; } else { e.prevType = e.type; e.type = 'skip'; S.sel = null; }
+      finishEventEdit(m, e.type === 'skip' ? null : e);
+    }
+  };
+  list.onchange = ev => {
+    const t = ev.target, row = t.closest('.hl'); if (!row) return;
+    const e = m.events.find(x => x.id === +row.dataset.id); if (!e) return;
+    if (t.matches('select[data-act="type"]')) {
+      e.type = t.value || null; if (e.type) { e.label = TYPES[e.type].label; if (!e.side) e.side = 'us'; } else e.side = null;
+      e.guess = false; return finishEventEdit(m, e);
+    }
+    if (t.matches('input[data-act="start"], input[data-act="end"]')) {
+      const v = parseClockTime(t.value.trim()), key = t.dataset.act;
+      if (v == null || v < 0 || (m.duration && v > m.duration)) { toast('Type a time like 12:34'); t.value = clock(e[key]); return; }
+      const ns = key === 'start' ? v : e.start, ne = key === 'end' ? v : e.end;
+      if (ne - ns < 2) { toast('The clip must be at least 2 seconds long'); t.value = clock(e[key]); return; }
+      e.start = ns; e.end = ne; DB.saveMatch(m);
+    }
+  };
+}
+
+// player helpers shared by the tabs
+function needVideo() { toast('Attach the match video first'); const a = $('#playerWrap'); if (a) a.scrollIntoView({ behavior: 'smooth' }); }
+function playClip(e) {
+  const v = $('#vid'); if (!v) return needVideo();
+  S.clipEnd = e.end; S.clipId = e.id;
+  const goTo = () => { S.ourSeek = true; v.currentTime = e.start; v.play().catch(() => {}); };
+  if (v.readyState >= 1) goTo(); else v.addEventListener('loadedmetadata', goTo, { once: true });
+  $$('.hl').forEach(c => c.classList.toggle('playing', +c.dataset.id === e.id));
+}
+function updateReelBar() {
+  const bar = $('#reelbar'); if (!bar) return;
+  if (!S.reel) { bar.hidden = true; return; }
+  bar.hidden = false; $('#reelTxt').textContent = `Highlight ${S.reel.i + 1} of ${S.reel.list.length} · ${clock(S.reel.list[S.reel.i].time)}`;
+}
+function nextReel(step = 1) {
+  const r = S.reel; if (!r) return;
+  r.i += step; if (r.i < 0) r.i = 0;
+  if (r.i >= r.list.length) { stopReel(); return toast('Highlights finished'); }
+  playClip(r.list[r.i]); updateReelBar();
+}
+function stopReel() { S.reel = null; S.clipEnd = null; const v = $('#vid'); if (v) v.pause(); updateReelBar(); }
+
+// ------------------------------------------------------------ step 4: export
+const sbHtml = (m, sc) => `<span>${esc(abbrOf(m.us))}</span><b>${sc.us}</b><b>${sc.them}</b><span>${esc(abbrOf(m.them))}</span>`;
+const abbrOf = s => String(s || '').replace(/[^A-Za-z0-9 ]/g, '').trim().split(/\s+/)[0].slice(0, 3).toUpperCase() || '---';
+function exportTab(m) {
+  const sbOn = m.sbOn !== false, pos = m.sbPos || 'tl', mode = m.vidMode || 'all', has = haveFile(m);
+  const left = playerHtml(m, { sb: true });
+  const right = `<div class="ex"><h2>Export</h2><p class="note" id="vidInfo"></p>
+    <div id="vidResultWrap">${videoResultCard(m)}</div>
+    <div class="card exCard">
+      <div class="fld"><span>What to include</span>${seg('vidMode', [['goals', 'Goals only'], ['all', 'All highlights']], mode)}</div>
+      <div class="fld"><span>Scoreboard graphic</span>${seg('sbMode', [['on', 'Add a scoreboard'], ['off', 'No scoreboard']], sbOn ? 'on' : 'off')}
+        <div id="sbPosWrap" ${sbOn ? '' : 'hidden'}>${seg('sbPos', [['tl', 'Top left'], ['tr', 'Top right']], pos)}</div>
+        <small>Choose &ldquo;No scoreboard&rdquo; if the video already shows one.</small></div>
+      <div class="fld"><span>Seconds around each goal</span><div class="fs"><label>Before<input id="preGoal" type="number" min="3" max="60" inputmode="numeric" value="${m.preGoal ?? 10}"></label>
+        <label>After<input id="postGoal" type="number" min="3" max="60" inputmode="numeric" value="${m.postGoal ?? 10}"></label></div></div>
+      <label class="chk"><input type="checkbox" id="statsEnd" ${m.statsEnd ? 'checked' : ''}><span>Show the match stats graphic at the end (about 8 seconds)</span></label>
+      <label class="chk"><input type="checkbox" id="csvToo" ${m.csvToo ? 'checked' : ''}><span>Also save the match data as a spreadsheet (.csv)</span></label>
+      <button class="primary wide" id="makeVideo" ${has ? '' : 'disabled'}>Make the video</button>
+      <p class="note">Adds a GOAL banner, then saves a video file you can share. It plays the clips in real time, so a 3 minute video takes about 3 minutes. Keep this tab in front while it works.</p></div></div>`;
+  shell(m, 'export', left, right);
+  const upSb = () => {
+    const el = $('#sbov'); if (!el) return;
+    const on = m.sbOn !== false; el.hidden = !on; el.className = 'sbov ' + (m.sbPos || 'tl');
+    const v = $('#vid'); el.innerHTML = sbHtml(m, scoreAt(m, v ? v.currentTime : 0, true));
+  };
+  wirePlayer(m, { onTick: upSb, onMark: id => { const e = m.events.find(x => x.id === id); if (e) { S.reel = null; updateReelBar(); playClip(e); } } });
+  S.onChange = () => { updateVidInfo(m); upSb(); };
+  upSb(); updateVidInfo(m);
+  const num = (el, d) => Math.max(3, Math.min(60, parseInt(el.value, 10) || d));
+  $('#preGoal').onchange = ev => { m.preGoal = num(ev.target, 10); DB.saveMatch(m); updateVidInfo(m); };
+  $('#postGoal').onchange = ev => { m.postGoal = num(ev.target, 10); DB.saveMatch(m); updateVidInfo(m); };
+  wireSeg('vidMode', v => { m.vidMode = v; DB.saveMatch(m); updateVidInfo(m); });
+  wireSeg('sbMode', v => { m.sbOn = v === 'on'; DB.saveMatch(m); $('#sbPosWrap').hidden = !m.sbOn; upSb(); });
+  wireSeg('sbPos', v => { m.sbPos = v; DB.saveMatch(m); upSb(); });
+  $('#statsEnd').onchange = ev => { m.statsEnd = ev.target.checked; DB.saveMatch(m); updateVidInfo(m); };
+  $('#csvToo').onchange = ev => { m.csvToo = ev.target.checked; DB.saveMatch(m); };
+  $('#makeVideo').onclick = () => runExport(m);
+  wireVideoResult(m);
+}
 function updateVidInfo(m) {
   const el = $('#vidInfo'); if (!el) return;
-  const mode = $('#vidMode .on') ? $('#vidMode .on').dataset.v : 'all';
-  const clips = clipsFor(m, mode), secs = clips.reduce((s, c) => s + c.end - c.start, 0) + 6;
+  const clips = clipsFor(m, m.vidMode || 'all'), secs = clips.reduce((s, c) => s + c.end - c.start, 0) + 6 + (m.statsEnd ? 8 : 0);
   const g = goalsOf(m), open = m.events.filter(e => e.type === 'goal' && !e.side).length;
   let t = clips.length ? `${clips.length} clip${clips.length === 1 ? '' : 's'}, about ${clock(secs)} long. Score so far ${m.us} ${g.filter(e => e.side === 'us').length}–${g.filter(e => e.side === 'them').length} ${m.them}.`
-                       : 'Nothing to put in a video yet. Add goal times below, or tag some moments.';
-  if (open) t += ` ${open} goal${open === 1 ? ' needs' : 's need'} a team picking first.`;
+                       : 'Nothing to put in a video yet. Find or add some highlights first.';
+  if (open) t += ` ${open} goal${open === 1 ? ' needs' : 's need'} a team picking first (Review step).`;
   el.textContent = t;
   const b = $('#makeVideo'); if (b) b.disabled = !clips.length || !haveFile(m);
 }
@@ -2436,44 +2741,16 @@ function videoResultCard(m) {
     <p class="note">${v.clips} clip${v.clips === 1 ? '' : 's'}, ${clock(v.seconds)} long, ${v.ext.toUpperCase()} file, ${mb} MB. Made ${esc(v.when)}. It stays here until you close or reload the app, so download it now.</p>
     <video controls playsinline preload="metadata" src="${v.url}" style="width:100%;border-radius:12px;margin:8px 0"></video>
     <a class="primary wide dl" id="dlVideo" href="${v.url}" download="${esc(v.name)}">&#11015; Download highlights</a>
-    ${v.canShare ? '<button class="ghost wide" id="shareVideo">Share&hellip;</button>' : ''}
-    <button class="ghost wide" id="againVideo">Make it again</button></section>`;
+    ${v.canShare ? '<button class="ghost wide" id="shareVideo">Share&hellip;</button>' : ''}</section>`;
 }
 function wireVideoResult(m) {
   const sh = $('#shareVideo'); if (sh) sh.onclick = () => navigator.share({ files: [new File([S.video.blob], S.video.name, { type: S.video.blob.type })], title: `${m.us} v ${m.them}` }).catch(() => {});
-  const ag = $('#againVideo'); if (ag) ag.onclick = () => runExport(m);
-}
-function highlightCards(m) {
-  const has = haveFile(m);
-  return `<div id="vidResultWrap">${videoResultCard(m)}</div><section class="card" id="vidCard"><h3>Highlights video</h3>
-    <p class="note" id="vidInfo"></p>
-    <div class="fld"><span>What to include</span>${seg('vidMode', [['all', 'Goals + highlights'], ['goals', 'Goals only']], m.vidMode || 'all')}</div>
-    <div class="fld"><span>Seconds around each goal</span><div class="fs"><label>Before<input id="preGoal" type="number" min="3" max="60" inputmode="numeric" value="${m.preGoal ?? 10}"></label>
-      <label>After<input id="postGoal" type="number" min="3" max="60" inputmode="numeric" value="${m.postGoal ?? 10}"></label></div></div>
-    <button class="primary wide" id="makeVideo" ${has ? '' : 'disabled'}>Make highlights video</button>
-    <p class="note">Adds a score graphic and a GOAL banner, then saves a video file you can share. It plays the clips in real time, so a 3 minute video takes about 3 minutes. Keep this tab in front while it works.</p></section>
-  <section class="card"><h3>Enter goal times</h3>
-    <p class="note">Type the time shown in the video player, one per line, with who scored. For example:</p>
-    <pre class="eg">12:34 ${esc(m.us)}\n34:33 ${esc(m.them)}\n1:02:10 us</pre>
-    <textarea id="goalTimes" rows="4" placeholder="12:34 ${esc(m.us)}"></textarea>
-    <button class="ghost wide" id="addGoals">Add these goals</button></section>`;
-}
-function wireHighlightCards(m) {
-  const pg = $('#preGoal'), po = $('#postGoal');
-  const num = (el, d) => Math.max(3, Math.min(60, parseInt(el.value, 10) || d));
-  if (pg) pg.onchange = () => { m.preGoal = num(pg, 10); DB.saveMatch(m); updateVidInfo(m); };
-  if (po) po.onchange = () => { m.postGoal = num(po, 10); DB.saveMatch(m); updateVidInfo(m); };
-  wireSeg('vidMode', v => { m.vidMode = v; DB.saveMatch(m); updateVidInfo(m); });
-  const ag = $('#addGoals'); if (ag) ag.onclick = () => addGoalsFromText(m);
-  const mv = $('#makeVideo'); if (mv) mv.onclick = () => runExport(m);
-  wireVideoResult(m); updateVidInfo(m);
 }
 async function runExport(m) {
   if (!haveFile(m)) return needVideo();
   if (!pickMime()) return toast("This browser can't record video. Use Chrome or Edge on a computer.");
-  if (m.events.some(e => e.type === 'goal' && !e.side)) return toast('Pick who scored on each goal first (Us / Them)');
-  const mode = $('#vidMode .on') ? $('#vidMode .on').dataset.v : 'all';
-  const clips = clipsFor(m, mode); if (!clips.length) return toast('Nothing to export yet');
+  if (m.events.some(e => e.type === 'goal' && !e.side)) return toast('Pick who scored on each goal first (Review step)');
+  const clips = clipsFor(m, m.vidMode || 'all'); if (!clips.length) return toast('Nothing to export yet');
   stopReel();
   const g = goalsOf(m), fin = { us: g.filter(e => e.side === 'us').length, them: g.filter(e => e.side === 'them').length };
   const ctrl = new AbortController();
@@ -2486,6 +2763,7 @@ async function runExport(m) {
   try {
     const res = await makeHighlightsVideo(S.file, {
       clips, us: m.us, them: m.them, title: 'Highlights', dateText: fmtDate(m.date), finalScore: fin, signal: ctrl.signal,
+      scoreboard: m.sbOn !== false, sbPos: m.sbPos || 'tl', stats: m.statsEnd ? statsData(m) : null,
       onProgress: p => { const b = $('#xbar'); if (b) { b.style.width = Math.round(p.frac * 100) + '%'; $('#xtxt').textContent = `${Math.round(p.frac * 100)}% · ${clock(p.done)} of ${clock(p.total)}. Keep this tab in front.`; } },
     });
     if (S.video && S.video.url) URL.revokeObjectURL(S.video.url);
@@ -2494,15 +2772,16 @@ async function runExport(m) {
     S.video = { matchId: m.id, blob: res.blob, url: URL.createObjectURL(res.blob), name, ext: res.ext, seconds: res.seconds, clips: clips.length, canShare, when: new Date().toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' }) };
     scrim.remove();
     const wrap = $('#vidResultWrap');
-    if (wrap) { wrap.innerHTML = videoResultCard(m); wireVideoResult(m); const pl = $('.player'), off = (pl ? pl.getBoundingClientRect().bottom : 0) + 10; window.scrollTo({ top: wrap.getBoundingClientRect().top + window.scrollY - off }); }
-    toast(res.hasAudio ? 'Your video is ready. Tap Download highlights.' : 'Your video is ready (no sound).');
+    if (wrap) { wrap.innerHTML = videoResultCard(m); wireVideoResult(m); wrap.scrollIntoView({ behavior: 'smooth', block: 'nearest' }); }
+    if (m.csvToo) downloadMatchData(m);
+    toast(res.hasAudio ? 'Your video is ready. Click Download highlights.' : 'Your video is ready (no sound).');
   } catch (err) {
     scrim.remove();
     if (!(err && err.name === 'AbortError')) toast(err.message || 'Could not make the video');
   }
 }
 
-// ------------------------------------------------------------ smart goal finder
+// ------------------------------------------------------------ smart goal finder helpers
 S.yam = null;
 function evidenceFor(m, n) {
   const ev = [], notes = {};
@@ -2530,57 +2809,108 @@ const G = { key: lsGet('ps_gemini_key', ''), pass: lsGet('ps_gemini_pass', ''), 
 // the key then stays on the server and people only enter an access code (or nothing).
 const GPROXY = ((document.querySelector('meta[name="pitchside-gemini-proxy"]') || {}).content || '').trim();
 const gAuth = () => (GPROXY ? { proxy: GPROXY, pass: G.pass } : G.key);
-function smartFinder(m) {
-  if (!haveFile(m) && !m.raw && !m.scoreEvents && !m.ballTrack) return needVideo();
-  let ctrl = null, picks = new Set(), cands = [], busy = false;
-  const scrim = document.createElement('div'); scrim.className = 'scrim';
-  document.body.appendChild(scrim);
-  const status = (ok, text) => `<span class="${ok ? 'ok' : 'no'}">${ok ? '&#10003;' : '&ndash;'}</span> ${text}`;
-  let typed = (m.finalUs != null && m.finalThem != null) ? [String(m.finalUs), String(m.finalThem)] : ['', ''];
-  const render = (msg) => {
-    if ($('#sfUs')) typed = [$('#sfUs').value, $('#sfThem').value];   // keep what was typed across redraws
-    readG();
-    const score = typed;
-    scrim.innerHTML = `<div class="sheet wide" role="dialog" aria-label="Smart goal finder"><h4>Smart goal finder</h4>
-      <div class="fs"><label>${esc(m.us)}<input id="sfUs" type="number" inputmode="numeric" min="0" max="30" value="${score[0]}"></label>
-        <label>${esc(m.them)}<input id="sfThem" type="number" inputmode="numeric" min="0" max="30" value="${score[1]}"></label></div>
-      <p class="note">Final score (optional, but it makes the result much better).</p>
-      <ul class="evs">
-        <li>${status(!!m.raw, 'Crowd noise &mdash; ' + (m.raw ? 'from the match scan' : 'run <b>Scan match</b> on the setup screen first'))}</li>
-        <li>${status(!!(m.scoreEvents && m.scoreEvents.length), 'Scoreboard &mdash; ' + (m.scoreEvents ? m.scoreEvents.length + ' score changes' : 'not marked (optional)'))}</li>
-        <li>${status(!!m.ballTrack, 'Ball tracking &mdash; ' + (m.ballTrack ? 'done' : 'run it from the setup screen (optional)'))}</li>
-        <li>${status(!!m.sound, 'Cheering and whistles &mdash; ' + (m.sound ? 'done' : 'not run'))} <button class="ghost sm" id="sfSound" ${busy ? 'disabled' : ''}>${m.sound ? 'Redo' : 'Listen'}</button></li>
-        <li>${status(!!m.speech, 'Spoken &ldquo;goal&rdquo; &mdash; ' + (m.speech ? m.speech.hits.length + ' mentions in ' + m.speech.words + ' words heard' : 'not run (needs voices on the recording)'))} <button class="ghost sm" id="sfSpeech" ${busy ? 'disabled' : ''}>${m.speech ? 'Redo' : 'Listen'}</button></li>
-      </ul>
-      <div class="gem">
-        <b>Ask Gemini <small>(watches the video${GPROXY ? '' : ' &mdash; needs your own free key'})</small></b>
-        <p class="note">${m.gemini ? `Done: Gemini found ${m.gemini.goals.length} goal${m.gemini.goals.length === 1 ? '' : 's'} (${esc(m.gemini.model)}).` : `Gemini is Google&rsquo;s AI. It watches the whole match, lists the goals, then takes a closer look at each one. ${GPROXY ? '' : 'Get a free key at <a href="https://aistudio.google.com/apikey" target="_blank" rel="noopener">aistudio.google.com/apikey</a>.'}`}</p>
-        ${m.gemini && m.gemini.warnings && m.gemini.warnings.length ? `<ul class="gemw">${m.gemini.warnings.map(w => `<li>${esc(w)}</li>`).join('')}</ul>` : ''}
-        <input id="gKey" type="password" autocomplete="off" spellcheck="false" placeholder="${GPROXY ? 'Access code (if you were given one)' : 'Paste your Gemini key'}" value="${esc(GPROXY ? G.pass : G.key)}">
-        ${G.models ? `<select id="gModel">${G.models.map(x => `<option value="${esc(x.name)}" ${x.name === G.model ? 'selected' : ''}>${esc(x.name)}</option>`).join('')}</select>` : ''}
-        <label class="chk"><input type="checkbox" id="gOk" ${G.ok ? 'checked' : ''}><span>I&rsquo;m happy for this video to be uploaded to Google with my key. (Google may use free-tier uploads to improve its products, so avoid footage you should not share, such as other people&rsquo;s children.)</span></label>
-        <label class="chk"><input type="checkbox" id="gExtra" ${G.extra ? 'checked' : ''}><span>Also look for shots, saves, corners and fouls (slower, and they are guesses to check)</span></label>
-        <label class="chk"><input type="checkbox" id="gRem" ${G.rem ? 'checked' : ''}><span>Remember ${GPROXY ? 'the access code' : 'the key'} on this device</span></label>
-        <div class="gbtns"><button class="ghost" id="sfGem" ${busy ? 'disabled' : ''}>${m.gemini ? 'Ask again' : 'Ask Gemini'}</button><button class="ghost" id="gForget" ${(GPROXY ? G.pass : G.key) && !busy ? '' : 'hidden'}>Forget ${GPROXY ? 'code' : 'key'}</button></div>
-      </div>
-      <p class="note" id="sfMsg">${msg || ''}</p>
-      <div id="sfList"></div>
-      <button class="primary wide" id="sfGo" ${busy ? 'disabled' : ''}>Find the goals</button>
-      <button class="primary wide" id="sfAdd" hidden></button>
-      <button class="cancel" id="sfClose">${busy ? 'Cancel' : 'Close'}</button></div>`;
-    $('#sfClose').onclick = () => { if (ctrl) ctrl.abort(); scrim.remove(); };
-    $('#sfSound').onclick = () => runSound(); $('#sfSpeech').onclick = () => runSpeech(); $('#sfGo').onclick = () => combine();
-    $('#sfGem').onclick = () => runGemini(); $('#gForget').onclick = () => { G.key = ''; G.pass = ''; G.models = null; G.rem = false; lsSet('ps_gemini_key', ''); lsSet('ps_gemini_pass', ''); render('Forgotten.'); };
+
+// ------------------------------------------------------------ step 2: find highlights
+S.open = { gemini: true };
+function findTab(m) {
+  let ctrl = null, picks = new Set(), cands = [], busy = false, msg = '';
+  const typed = [m.finalUs != null ? String(m.finalUs) : '', m.finalThem != null ? String(m.finalThem) : ''];
+  const top = `<div class="fpTop"><div class="fs"><label>${esc(m.us)}<input id="sfUs" type="number" inputmode="numeric" min="0" max="30" value="${typed[0]}"></label>
+      <span class="dash">&ndash;</span><label>${esc(m.them)}<input id="sfThem" type="number" inputmode="numeric" min="0" max="30" value="${typed[1]}"></label></div>
+      <small>Final score (optional). It makes the result much better.</small></div>`;
+  shell(m, 'find', playerHtml(m), `<div class="fp">${top}<div class="fpScroll" id="fpScroll"></div><div class="fpBot" id="fpBot"></div></div>`);
+  wirePlayer(m, { onMark: id => { S.sel = id; go(`#/match/${m.id}/review`); } });
+  const saveFinal = () => {
+    typed[0] = $('#sfUs').value; typed[1] = $('#sfThem').value;
+    const a = parseInt(typed[0], 10), b = parseInt(typed[1], 10);
+    m.finalUs = a >= 0 ? a : null; m.finalThem = b >= 0 ? b : null; DB.saveMatch(m);
   };
-  const readG = () => { if ($('#gKey')) { if (GPROXY) G.pass = $('#gKey').value.trim(); else G.key = $('#gKey').value.trim(); G.ok = $('#gOk').checked; G.extra = $('#gExtra').checked; G.rem = $('#gRem').checked; if ($('#gModel')) G.model = $('#gModel').value; } };
-  const setMsg = t => { const e = $('#sfMsg'); if (e) e.textContent = t; };
+  $('#sfUs').oninput = $('#sfThem').oninput = saveFinal;
+  const sec = (k, title, tag, state, body) => `<details class="sec" data-k="${k}" ${S.open[k] ? 'open' : ''}><summary><span class="sn">${title}</span>${tag ? `<i class="tag2">${tag}</i>` : ''}<small class="st">${state || ''}</small></summary><div class="sb">${body}</div></details>`;
+  const keyVal = GPROXY ? G.pass : G.key;
+  const bodyHtml = () => {
+    const gem = m.gemini;
+    return (cands.length ? `<div class="res"><h4>Goals found</h4><div id="sfList"></div></div>` : '') +
+    sec('gemini', 'Ask Gemini', 'Recommended', gem ? `${gem.goals.length} goal${gem.goals.length === 1 ? '' : 's'}` : '', `
+      <p class="note">${gem ? `Done: Gemini found ${gem.goals.length} goal${gem.goals.length === 1 ? '' : 's'} (${esc(gem.model)}).` : `Gemini is Google&rsquo;s AI. It watches the whole match, lists the goals, then takes a closer look at each one. ${GPROXY ? '' : 'Get a free key at <a href="https://aistudio.google.com/apikey" target="_blank" rel="noopener">aistudio.google.com/apikey</a>.'}`}</p>
+      ${gem && gem.warnings && gem.warnings.length ? `<ul class="gemw">${gem.warnings.map(w => `<li>${esc(w)}</li>`).join('')}</ul>` : ''}
+      <div class="gem"><input id="gKey" type="password" autocomplete="off" spellcheck="false" placeholder="${GPROXY ? 'Access code (if you were given one)' : 'Paste your Gemini key'}" value="${esc(keyVal)}">
+      ${G.models ? `<select id="gModel">${G.models.map(x => `<option value="${esc(x.name)}" ${x.name === G.model ? 'selected' : ''}>${esc(x.name)}</option>`).join('')}</select>` : ''}
+      <label class="chk"><input type="checkbox" id="gOk" ${G.ok ? 'checked' : ''}><span>I&rsquo;m happy for this video to be uploaded to Google with my key. (Google may use free-tier uploads to improve its products, so avoid footage you should not share, such as other people&rsquo;s children.)</span></label>
+      <label class="chk"><input type="checkbox" id="gExtra" ${G.extra ? 'checked' : ''}><span>Also look for shots, saves, corners and fouls (slower, and they are guesses to check)</span></label>
+      <label class="chk"><input type="checkbox" id="gRem" ${G.rem ? 'checked' : ''}><span>Remember ${GPROXY ? 'the access code' : 'the key'} on this device</span></label>
+      <div class="gbtns"><button class="ghost" id="sfGem" ${busy ? 'disabled' : ''}>${gem ? 'Ask again' : 'Ask Gemini'}</button><button class="ghost" id="gForget" ${keyVal && !busy ? '' : 'hidden'}>Forget ${GPROXY ? 'code' : 'key'}</button></div></div>`) +
+    sec('ball', 'Track the ball', 'Beta', m.ballTrack ? 'Done' : '', `
+      <p class="note">Follows the ball in the video to find goals: the ball reaching a goal, then a kick-off from the centre spot. Slow, but needs no tagging. Needs a ball model file (<code>.onnx</code>), loaded once.</p>
+      <p class="note">${ballStateText()}</p>
+      <label class="btn ghost filebtn"><input id="ballModel" type="file" accept=".onnx" hidden>${S.ball.name ? 'Use a different model file' : 'Choose the ball model (.onnx)'}</label>
+      <div class="fld"><span>Detail</span>${seg('ballSeg', [[1, 'Quick &middot; 1/s'], [2, 'Balanced &middot; 2/s'], [3, 'Thorough &middot; 3/s']], S.ballFps)}<small id="ballEta"></small></div>
+      <button class="ghost wide" id="goBall" ${busy || !haveFile(m) || !S.ball.name ? 'disabled' : ''}>Track the ball and find goals</button>`) +
+    sec('board', 'Scoreboard reader', '', m.scoreBoxes ? (m.scoreEvents ? `${m.scoreEvents.length} changes` : 'Area set') : '', `
+      <p class="note">If the video shows a scoreboard, mark where the two score numbers are. The crowd noise scan below then notices every time one changes, which gives goal times and who scored.</p>
+      ${m.scoreBoxes ? `<p class="note">${m.scoreEvents ? `Last scan saw ${m.scoreEvents.length} score change${m.scoreEvents.length === 1 ? '' : 's'}${m.scoreNoisy ? ' (the area kept changing, so it may include the clock. Mark just the numbers and scan again)' : ''}.` : 'Score area set. It is read during the next crowd noise scan.'}</p>` : ''}
+      <button class="ghost wide" id="markScore" ${haveFile(m) ? '' : 'disabled'}>${m.scoreBoxes ? 'Change the score area' : 'Mark the score area'}</button>
+      ${m.scoreEvents && m.scoreEvents.length ? `<button class="ghost wide" id="useScore">Use these ${m.scoreEvents.length} changes as the goals</button>` : ''}`) +
+    sec('sound', 'Cheering and whistles', '', m.sound ? 'Done' : '', `
+      <p class="note">Listens to the crowd for cheering, applause and whistles. Runs in this browser (Chrome or Edge) and is quick.</p>
+      <button class="ghost wide" id="sfSound" ${busy ? 'disabled' : ''}>${m.sound ? 'Listen again' : 'Listen for cheering and whistles'}</button>`) +
+    sec('speech', 'Spoken &ldquo;goal&rdquo;', '', m.speech ? `${m.speech.hits.length} mentions` : '', `
+      <p class="note">Listens for anyone saying &ldquo;goal&rdquo; on the recording. Only helps if there are voices on it. The first time, it downloads a speech model.</p>
+      <button class="ghost wide" id="sfSpeech" ${busy ? 'disabled' : ''}>${m.speech ? 'Listen again' : 'Listen for &ldquo;goal&rdquo;'}</button>`) +
+    sec('crowd', 'Crowd noise scan', '', m.raw ? 'Scanned' : '', `
+      <p class="note">Plays the video silently at speed and measures the noise and the action. It also reads the scoreboard if you marked it. About 15 minutes per hour of footage. Keep this screen open.</p>
+      <div class="fld"><span>Scan speed</span>${seg('rateSeg', [[4, 'Thorough &middot; &times;4'], [8, 'Quick &middot; &times;8']], S.rate)}<small id="eta"></small></div>
+      <button class="ghost wide" id="goScan" ${haveFile(m) && !busy ? '' : 'disabled'}>${m.raw ? 'Scan again' : 'Scan the match'}</button>
+      <label class="btn ghost filebtn"><input id="ifile" type="file" accept=".json,application/json" hidden>Import an analysis from the desktop script</label>`) +
+    sec('typed', 'Type the goal times', '', '', `
+      <p class="note">If you already know the times, type them from the video player, one per line, with who scored. For example:</p>
+      <pre class="eg">12:34 ${esc(m.us)}\n34:33 ${esc(m.them)}\n1:02:10 us</pre>
+      <textarea id="goalTimes" rows="4" placeholder="12:34 ${esc(m.us)}"></textarea>
+      <button class="ghost wide" id="addGoals">Add these goals</button>`);
+  };
+  const render = (text) => {
+    if (text != null) msg = text;
+    const sc = $('#fpScroll'), st = sc.scrollTop;
+    const gt = $('#goalTimes'), goalTxt = gt ? gt.value : '';
+    sc.innerHTML = bodyHtml();
+    sc.scrollTop = st; if ($('#goalTimes')) $('#goalTimes').value = goalTxt;
+    $('#fpBot').innerHTML = `<p class="note" id="sfMsg">${esc(msg)}</p>
+      <div class="fpBtns">${busy ? '<button class="ghost" id="sfStop">Stop</button>' : `<button class="ghost" id="sfGo">${cands.length ? 'Work it out again' : 'Work out the goals'}</button>`}
+      <button class="primary" id="sfAdd" ${cands.length ? '' : 'hidden'}></button></div>`;
+    $$('details.sec', sc).forEach(d => d.ontoggle = () => { S.open[d.dataset.k] = d.open; });
+    wireSec(); if (cands.length) drawCands();
+  };
+  S.refresh = () => render();
+  const setMsg = t => { msg = t; const e = $('#sfMsg'); if (e) e.textContent = t; };
+  const eta = () => { const e = $('#eta'), d = m.video && m.video.duration; if (e) e.textContent = d ? `About ${Math.max(1, Math.ceil(d / S.rate / 60))} min` : ''; };
+  const wireSec = () => {
+    const on = (id, fn) => { const e = $('#' + id); if (e) e.onclick = fn; };
+    on('sfStop', () => ctrl && ctrl.abort()); on('sfGo', () => combine()); on('sfSound', () => runSound()); on('sfSpeech', () => runSpeech()); on('sfGem', () => runGemini());
+    on('gForget', () => { G.key = ''; G.pass = ''; G.models = null; G.rem = false; lsSet('ps_gemini_key', ''); lsSet('ps_gemini_pass', ''); render('Forgotten.'); });
+    on('markScore', () => markScoreArea(m, () => render())); on('goScan', () => startScan(m)); on('goBall', () => runBallScan(m)); on('addGoals', () => { addGoalsFromText(m); render(); });
+    on('useScore', () => {
+      m.events = m.events.filter(e => !(e.guess && !e.side));
+      for (const e of m.scoreEvents) { const g = addGoalAt(m, e.time, e.side); g.fromScoreboard = true; g.label = 'Goal (scoreboard)'; }
+      m.finalUs = m.scoreEvents.filter(e => e.side === 'us').length; m.finalThem = m.scoreEvents.length - m.finalUs;
+      finishEventEdit(m); toast(`Marked ${m.scoreEvents.length} goals from the scoreboard`); go(`#/match/${m.id}/review`);
+    });
+    const k = $('#gKey'); if (k) k.oninput = () => { if (GPROXY) G.pass = k.value.trim(); else G.key = k.value.trim(); };
+    const gm = $('#gModel'); if (gm) gm.onchange = () => { G.model = gm.value; };
+    [['gOk', 'ok'], ['gExtra', 'extra'], ['gRem', 'rem']].forEach(([id, key]) => { const e = $('#' + id); if (e) e.onchange = () => { G[key] = e.checked; }; });
+    wireSeg('rateSeg', v => { S.rate = +v; eta(); }); eta();
+    wireSeg('ballSeg', v => { S.ballFps = +v; ballEta(m); }); ballEta(m);
+    const bm = $('#ballModel'); if (bm) bm.onchange = e => chooseBallModel(m, e.target.files[0]);
+    const imp = $('#ifile'); if (imp) imp.onchange = async e => {
+      const f = e.target.files[0]; if (!f) return;
+      try { await importAnalysis(m, f); await DB.saveMatch(m); toast('Analysis imported'); render('Analysis imported.'); } catch (err) { toast(err.message || 'Could not read that file'); }
+    };
+  };
   const needAudio = () => { if (!haveFile(m)) { toast('Attach the match video first'); return false; } if (!audioSupported()) { setMsg('This needs Chrome or Edge on a computer.'); return false; } return true; };
-  const wasLong = (p) => `${clock((p.seconds != null ? p.seconds : 0))} listened to`;
   async function runSound(fileForModel) {
     if (!needAudio()) return; busy = true; render('Starting…'); ctrl = new AbortController();
     try {
       if (!S.yam) {
-        let buf = fileForModel || await getYamnetBuffer(t => setMsg(t));
+        const buf = fileForModel || await getYamnetBuffer(t => setMsg(t));
         S.yam = await loadYamnet(buf, { onStatus: t => setMsg(t) });
         if (fileForModel) await keepYamnet(fileForModel);
       }
@@ -2606,7 +2936,6 @@ function smartFinder(m) {
     } catch (err) { busy = false; S.asr = null; render(err.message || 'The speech scan failed'); }
   }
   async function runGemini() {
-    readG();
     if (!haveFile(m)) return toast('Attach the match video first');
     if (!GPROXY && !G.key) return setMsg('Paste your Gemini key first.');
     if (!G.ok) return setMsg('Tick the box to say you are happy for the video to be uploaded to Google.');
@@ -2614,56 +2943,61 @@ function smartFinder(m) {
     if (!dur) { try { dur = (await probeVideo(S.file)).duration; } catch (_) {} }
     if (!dur || !isFinite(dur)) return setMsg('I could not work out how long the video is.');
     const fa = parseInt($('#sfUs').value, 10), fb = parseInt($('#sfThem').value, 10), haveFinal = fa >= 0 && fb >= 0;
-    busy = true; render('Checking access\u2026'); ctrl = new AbortController(); let up = null; const auth = gAuth();
+    busy = true; render('Checking access…'); ctrl = new AbortController(); let up = null; const auth = gAuth();
     try {
       if (!G.models) { G.models = await listModels(auth, { signal: ctrl.signal }); }
       const saved = lsGet('ps_gemini_model', '');
       if (!G.models.some(x => x.name === G.model)) G.model = saved && G.models.some(x => x.name === saved) ? saved : G.models[0].name;
       lsSet('ps_gemini_key', G.rem && !GPROXY ? G.key : ''); lsSet('ps_gemini_pass', G.rem && GPROXY ? G.pass : ''); lsSet('ps_gemini_model', G.model);
-      setMsg('Uploading the video to Google\u2026 0%');
-      up = await uploadVideo(auth, S.file, { signal: ctrl.signal, onProgress: f => setMsg(`Uploading the video to Google\u2026 ${Math.round(f * 100)}% (a 200 MB match can take several minutes)`) });
+      setMsg('Uploading the video to Google… 0%');
+      up = await uploadVideo(auth, S.file, { signal: ctrl.signal, onProgress: f => setMsg(`Uploading the video to Google… ${Math.round(f * 100)}% (a 200 MB match can take several minutes)`) });
       const sideOf = t => sideFromText(m, t);
       const r = await geminiGoals(auth, G.model, up, { us: m.us, them: m.them, duration: dur, finalUs: haveFinal ? fa : null, finalThem: haveFinal ? fb : null, sideOf, signal: ctrl.signal, onProgress: t => setMsg(t) });
       let moments = [];
       if (G.extra) moments = await geminiMoments(auth, G.model, up, { us: m.us, them: m.them, duration: dur, sideOf, signal: ctrl.signal, onProgress: t => setMsg(t) });
       m.gemini = { model: G.model, at: Date.now(), goals: r.goals.map(g => ({ t: g.t, side: g.side, conf: g.conf, note: g.note, fine: !!g.fine, unsure: !!g.unsure, gap: !!g.gap })), warnings: r.warnings, moments: moments.filter(x => x.side) };
       await DB.saveMatch(m);
-      busy = false; render(`Done. Gemini listed ${r.goals.length} goal${r.goals.length === 1 ? '' : 's'}: ${r.goals.map(g => clock(g.t) + (g.fine ? '' : '?')).join(', ') || 'none'}${moments.length ? `, plus ${moments.length} other moments` : ''}. Now press Find the goals.`);
+      busy = false;
+      combine(`Gemini listed ${r.goals.length} goal${r.goals.length === 1 ? '' : 's'}: ${r.goals.map(g => clock(g.t) + (g.fine ? '' : '?')).join(', ') || 'none'}${moments.length ? `, plus ${moments.length} other highlights` : ''}.`);
     } catch (err) {
       busy = false; if (err.status === 400 || err.status === 401 || err.status === 403) G.models = null;
       render(err.message || 'Gemini did not work');
     } finally { if (up) deleteUpload(auth, up.name); }
   }
-  function combine() {
+  function combine(prefix) {
     const a = parseInt($('#sfUs').value, 10), b = parseInt($('#sfThem').value, 10);
     const known = a >= 0 && b >= 0 ? a + b : null;
-    if (known === 0) return setMsg('0–0, so there are no goals to find.');
-    if (known != null) { m.finalUs = a; m.finalThem = b; }
+    if (known === 0) return render('0–0, so there are no goals to find.');
+    if (known != null) { m.finalUs = a; m.finalThem = b; DB.saveMatch(m); }
     const { ev, notes } = evidenceFor(m, known);
-    if (!ev.length) return setMsg('There is no evidence yet. Run Scan match, the ball tracker, or one of the Listen buttons.');
+    if (!ev.length) return render('There is no evidence yet. Try Ask Gemini, the crowd noise scan, the ball tracker or one of the Listen buttons first.');
     cands = fuse(ev, { n: known });
     picks = new Set(); cands.forEach((c, i) => { if (c.picked) picks.add(i); });
     const names = { crowd: 'crowd noise', board: 'scoreboard', ball: 'ball', cheer: 'cheering', speech: 'speech', gemini: 'Gemini' };
-    setMsg(`Used: ${Object.keys(notes).map(k => names[k] || k).join(', ')}.${known != null ? ` Kept the ${known} most likely, for a final score of ${a}–${b}.` : ' Without the final score it keeps only the strongest.'}`);
-    const rows = cands.slice().map((c, i) => [c, i]).sort((x, y) => (y[0].picked - x[0].picked) || (x[0].time - y[0].time));
-    $('#sfList').innerHTML = rows.map(([c, i]) => `<label class="cand big"><input type="checkbox" data-i="${i}" ${picks.has(i) ? 'checked' : ''}>
-      <b>${clock(c.time)}</b><span class="chips">${c.evidence.map(e => `<i class="chip">${esc(e.label)}</i>`).join('')}</span><em>${Math.round(c.score * 100)}%</em></label>`).join('');
-    $$('#sfList input').forEach(cb => cb.onchange = () => { cb.checked ? picks.add(+cb.dataset.i) : picks.delete(+cb.dataset.i); upd(); });
-    const nm = m.gemini && m.gemini.moments ? m.gemini.moments.length : 0;
-    if (nm) $('#sfList').insertAdjacentHTML('beforeend', `<label class="chk mom"><input type="checkbox" id="sfMoms" checked><span>Also add the ${nm} shots, saves, corners and fouls Gemini found (guesses, so check them)</span></label>`);
-    $('#sfGo').textContent = 'Work it out again'; upd();
+    render(`${prefix ? prefix + ' ' : ''}Used: ${Object.keys(notes).map(k => names[k] || k).join(', ')}.${known != null ? ` Kept the ${known} most likely, for a final score of ${a}–${b}.` : ' Without the final score it keeps only the strongest.'}`);
+    const r = $('.res'); if (r) r.scrollIntoView({ block: 'nearest' });
   }
-  const upd = () => { const b = $('#sfAdd'); b.hidden = false; b.disabled = !picks.size; b.textContent = picks.size ? `Add ${picks.size} goal${picks.size === 1 ? '' : 's'} to the match` : 'Tick the goals to add';
+  function drawCands() {
+    const rows = cands.map((c, i) => [c, i]).sort((x, y) => (y[0].picked - x[0].picked) || (x[0].time - y[0].time));
+    $('#sfList').innerHTML = rows.map(([c, i]) => `<label class="cand big"><input type="checkbox" data-i="${i}" ${picks.has(i) ? 'checked' : ''}>
+      <b>${clock(c.time)}</b><span class="chips">${c.evidence.map(e => `<i class="chip">${esc(e.label)}</i>`).join('')}</span><em>${Math.round(c.score * 100)}%</em></label>`).join('')
+      + (m.gemini && m.gemini.moments && m.gemini.moments.length ? `<label class="chk extra"><input type="checkbox" id="sfMoms" checked><span>Also add the ${m.gemini.moments.length} shots, saves, corners and fouls Gemini found (guesses, so check them)</span></label>` : '');
+    $$('#sfList input[data-i]').forEach(cb => cb.onchange = () => { cb.checked ? picks.add(+cb.dataset.i) : picks.delete(+cb.dataset.i); upd(); });
+    upd();
+  }
+  function upd() {
+    const b = $('#sfAdd'); if (!b || !cands.length) return;
+    b.hidden = false; b.disabled = !picks.size; b.textContent = picks.size ? `Add ${picks.size} goal${picks.size === 1 ? '' : 's'} & review` : 'Tick the goals to add';
     b.onclick = async () => {
-      if (!m.events) m.events = [];
-      if (!m.duration) { m.duration = (m.video && m.video.duration) || 0; m.half = m.halfTime || m.duration / 2; }
       [...picks].sort((x, y) => cands[x].time - cands[y].time).forEach(i => addGoalAt(m, cands[i].time, cands[i].side));
       const mo = $('#sfMoms'); if (mo && mo.checked && m.gemini && m.gemini.moments) addMomentsFrom(m, m.gemini.moments);
-      await DB.saveMatch(m); scrim.remove(); finishEventEdit(m); toast('Added. Check each one, then tap who scored.'); go(`#/match/${m.id}/moments`);
-    }; };
+      finishEventEdit(m); toast('Added. Check each one in Review.'); go(`#/match/${m.id}/review`);
+    };
+  }
   render('');
 }
 
+// ------------------------------------------------------------ ball tracker (beta)
 // ------------------------------------------------------------ ball tracker (beta)
 const KEEP = 'pitchside-keep', MODEL_KEY = '/__pitchside_ball_model';
 async function saveBallModel(name, buffer) {
@@ -2688,7 +3022,7 @@ async function chooseBallModel(m, f) {
     if (buf.byteLength < 100000) throw new Error('That file is too small to be a model');
     S.ball = { name: f.name, buffer: buf, sess: null };
     await saveBallModel(f.name, buf);
-    toast('Model loaded: ' + f.name); setupView(m);
+    toast('Model loaded: ' + f.name); if (S.refresh) S.refresh();
   } catch (err) { toast(err.message || 'Could not read that file'); }
 }
 function ballEta(m) {
@@ -2797,7 +3131,7 @@ function ballReview(m, res) {
     m.ballTrack = { fps: S.ballFps, duration: res.duration, zones, rows: res.rows.map(r => [+r[0].toFixed(2), +r[1].toFixed(4), +r[2].toFixed(4), +r[3].toFixed(2)]) };
     [...pick].sort((a, b) => cands[a].time - cands[b].time).forEach(i => addGoalAt(m, cands[i].time, null));
     await DB.saveMatch(m); close(); finishEventEdit(m);
-    toast('Added. Now tap who scored on each goal.'); go(`#/match/${m.id}/moments`);
+    toast('Added. Check who scored on each one.'); go(`#/match/${m.id}/review`);
   };
   recalc();
 }
@@ -2844,143 +3178,8 @@ function markScoreArea(m, done) {
   $('#markSave').onclick = async () => { m.scoreBoxes = { home: boxes.home, away: boxes.away }; m.scoreHome = $('#markWho').value; await DB.saveMatch(m); close(); toast('Score area saved'); if (done) done(); };
   msg();
 }
-function scoreCard(m) {
-  if (!m.scoreEvents) return '';
-  const ev = m.scoreEvents, us = ev.filter(e => e.side === 'us').length, them = ev.length - us;
-  return `<section class="card" id="scoreCard"><h3>Scoreboard changes</h3>
-    <p class="note">${ev.length ? `The scoreboard changed ${ev.length} time${ev.length === 1 ? '' : 's'}: ${esc(m.us)} ${us}, ${esc(m.them)} ${them}.` : 'No score changes were seen in the marked area.'}
-    ${m.scoreNoisy ? ' The marked area kept changing, so it may include the clock. Mark just the numbers and scan again.' : ''}</p>
-    ${ev.length ? `<p class="note">${ev.map(e => `${clock(e.time)} ${esc(e.side === 'us' ? m.us : m.them)}`).join(' · ')}</p><button class="primary wide" id="useScore">Use these as the goals</button>` : ''}</section>`;
-}
 
 function loadModel() { try { const j = JSON.parse(lsGet('ps_goal_model', 'null')); return j && j.w && j.w.length === 6 ? j : null; } catch (_) { return null; } }
-function teachFromMatch(m) {
-  const goals = goalsOf(m).filter(e => e.manual || e.fromScoreboard);
-  if (!m.raw || !m.raw.loud) return toast('This match has no audio signals to learn from');
-  if (goals.length < 2) return toast('Confirm at least 2 goals first (scoreboard, typed times or Goal here)');
-  const r = trainGoalModel(m.raw, m.duration, goals.map(e => e.time), { sampleFps: 2, prev: loadModel() });
-  if (!r) return toast('Not enough data to learn from');
-  lsSet('ps_goal_model', JSON.stringify(r.model)); updateTeachInfo(m);
-  toast(`Learned from ${goals.length} goals. On this match it now finds ${r.hit} of ${r.total}.`);
-}
-function updateTeachInfo(m) { const el = $('#teachInfo'); if (!el) return; const md = loadModel(); el.textContent = md ? `Pitchside has learned from ${md.n} goals so far. "Find goals" uses that.` : 'Not taught yet. "Find goals" uses a basic guess.'; }
-function goalBox(m) {
-  return `<section class="card goalbox" id="goalBox"><h3>Find the goals</h3>
-    <p class="note">Enter the final score and Pitchside picks the most goal-like moments (a long roar, then a lull and a restart whistle). You then just tap who scored.</p>
-    <div class="fs"><label>${esc(m.us)}<input id="fsUs" type="number" inputmode="numeric" min="0" max="30" value="${m.finalUs ?? ''}"></label>
-      <span class="dash">&ndash;</span>
-      <label>${esc(m.them)}<input id="fsThem" type="number" inputmode="numeric" min="0" max="30" value="${m.finalThem ?? ''}"></label></div>
-    <button class="primary wide" id="findGoals">Find goals</button><p class="note" id="goalStatus"></p>
-    <button class="ghost wide" id="teach">Teach Pitchside from this match's confirmed goals</button><p class="note" id="teachInfo"></p></section>`;
-}
-function updateGoalStatus(m) {
-  const el = $('#goalStatus'); if (!el) return;
-  const g = m.events.filter(e => e.type === 'goal'), us = g.filter(e => e.side === 'us').length, them = g.filter(e => e.side === 'them').length;
-  const open = g.filter(e => !e.side).length;
-  if (!g.length) { el.textContent = ''; return; }
-  const fin = m.finalUs != null && m.finalThem != null ? ` (final score ${m.finalUs}\u2013${m.finalThem})` : '';
-  el.textContent = `Goals marked: ${m.us} ${us}, ${m.them} ${them}${open ? ` · ${open} still to assign` : ''}${fin}`;
-}
-function runFindGoals(m) {
-  const a = parseInt($('#fsUs').value, 10), b = parseInt($('#fsThem').value, 10);
-  if (!(a >= 0) || !(b >= 0)) return toast('Enter the final score first');
-  if (a + b === 0) return toast('0\u20130, so no goals to find');
-  m.finalUs = a; m.finalThem = b;
-  // clear earlier guesses the user has not confirmed
-  m.events = m.events.filter(e => !(e.guess && e.created && !e.side));
-  for (const e of m.events) if (e.guess && !e.side) { e.type = null; e.guess = false; }
-  const cands = findGoals(m.raw, m.duration, { n: a + b, halfTime: m.halfTime, sampleFps: 2, model: loadModel() });
-  let id = Math.max(0, ...m.events.map(x => x.id));
-  for (const c of cands) {
-    const near = m.events.find(e => Math.abs(e.time - c.time) < 25);
-    if (near) { if (!near.type || near.guess) { near.type = 'goal'; near.guess = true; near.label = 'Likely goal'; near.time = c.time; near.start = Math.max(0, c.time - 15); near.end = Math.min(m.duration, c.time + 12); } }
-    else m.events.push({ id: ++id, time: c.time, start: Math.max(0, c.time - 15), end: Math.min(m.duration, c.time + 12), score: c.score, label: 'Likely goal', type: 'goal', side: null, guess: true, created: true });
-  }
-  m.events.sort((x, y) => x.time - y.time); m.events.forEach((e, i) => e.id = i + 1);
-  DB.saveMatch(m); renderMoments(m); updateGoalStatus(m);
-  toast(`Marked ${cands.length} likely goals. Tap who scored on each.`);
-  const first = $('.mom.tagged'); if (first) first.scrollIntoView({ behavior: 'smooth', block: 'center' });
-}
-function momentsTab(m) {
-  const has = haveFile(m);
-  $('#tabBody').innerHTML = `
-    <section class="player" id="playerWrap">
-      ${has ? `<video id="vid" src="${S.fileUrl}" controls playsinline preload="metadata"></video>
-        <div class="reelbar" id="reelbar" hidden><button data-r="prev" aria-label="Previous">&#8249;</button><span id="reelTxt"></span><button data-r="next" aria-label="Next">&#8250;</button><button data-r="stop" class="stop">Stop</button></div>`
-        : `<div class="attach"><p>Attach the match video to watch these moments.</p><label class="btn primary"><input id="vfile" type="file" accept="video/*" hidden>Choose video</label></div>`}
-    </section>
-    <div class="actions">
-      <button class="ghost" id="addMoment" ${has ? '' : 'disabled'}>+ Moment at <b id="addAt">0:00</b></button>
-      <button class="primary sm" id="playReel">Play highlights</button></div>
-    <div class="actions quick"><button class="ghost" id="goalUs" ${has ? '' : 'disabled'}>Goal here: ${esc(m.us)}</button>
-      <button class="ghost" id="goalThem" ${has ? '' : 'disabled'}>Goal here: ${esc(m.them)}</button></div>
-    ${highlightCards(m)}
-    ${scoreCard(m)}
-    <div class="actions"><button class="ghost" id="smartOpen">Smart goal finder (combine all clues)</button></div>
-    ${m.raw ? goalBox(m) : ''}
-    ${m.raw ? `<div class="fld inline"><span>Sensitivity</span>${seg('sensSeg', [['fewer', 'Fewer'], ['normal', 'Normal'], ['more', 'More']], m.sens || 'normal')}</div>` : ''}
-    <div id="momentList" class="moms"></div>`;
-  renderMoments(m); updateGoalStatus(m); wireHighlightCards(m);
-  const fg = $('#findGoals'); if (fg) fg.onclick = () => runFindGoals(m);
-  const so = $('#smartOpen'); if (so) so.onclick = () => smartFinder(m);
-  const th = $('#teach'); if (th) th.onclick = () => teachFromMatch(m); updateTeachInfo(m);
-  const us = $('#useScore'); if (us) us.onclick = () => {
-    m.events = m.events.filter(e => !(e.guess && !e.side));
-    for (const e of m.scoreEvents) { const g = addGoalAt(m, e.time, e.side); g.fromScoreboard = true; g.label = 'Goal (scoreboard)'; }
-    m.finalUs = m.scoreEvents.filter(e => e.side === 'us').length; m.finalThem = m.scoreEvents.length - m.finalUs;
-    finishEventEdit(m); toast(`Marked ${m.scoreEvents.length} goals from the scoreboard`);
-  };
-  const vf = $('#vfile'); if (vf) vf.onchange = e => attachFile(m, e.target.files[0], () => momentsTab(m));
-  const list = $('#momentList');
-  list.onclick = ev => {
-    const card = ev.target.closest('.mom'); if (!card) return;
-    const e = m.events.find(x => x.id === +card.dataset.id); if (!e) return;
-    const sideBtn = ev.target.closest('[data-side]'), actEl = ev.target.closest('[data-act]');
-    if (sideBtn) { e.side = sideBtn.dataset.side; if (e.guess) e.label = 'Goal'; DB.saveMatch(m); card.outerHTML = momCard(e, S.clipId === e.id); updateGoalStatus(m); updateVidInfo(m); return; }
-    if (!actEl) return;
-    if (actEl.dataset.act === 'play') { S.reel = null; updateReelBar(); playClip(e); }
-    else if (actEl.dataset.act === 'skip') {
-      if (e.type === 'skip') { e.type = e.prevType || null; e.prevType = null; } else { e.prevType = e.type; e.type = 'skip'; }
-      DB.saveMatch(m); renderMoments(m);
-    }
-  };
-  list.onchange = ev => {
-    if (!ev.target.matches('select[data-act="type"]')) return;
-    const card = ev.target.closest('.mom'), e = m.events.find(x => x.id === +card.dataset.id);
-    e.type = ev.target.value || null;
-    if (e.type && !e.side) e.side = 'us';
-    if (!e.type) e.side = null;
-    DB.saveMatch(m); renderMoments(m);
-  };
-  $('#playReel').onclick = () => {
-    if (!haveFile(m)) return needVideo();
-    const rl = reelList(m); if (!rl.length) return toast('Nothing to play yet');
-    S.reel = { list: rl, i: 0 }; playClip(rl[0]); updateReelBar();
-  };
-  const quick = side => () => { const v = $('#vid'); if (!v) return needVideo(); addGoalAt(m, v.currentTime, side); finishEventEdit(m); toast(`Goal marked at ${clock(v.currentTime)} for ${side === 'us' ? m.us : m.them}`); };
-  $('#goalUs').onclick = quick('us'); $('#goalThem').onclick = quick('them');
-  $('#addMoment').onclick = () => {
-    const v = $('#vid'); if (!v) return needVideo();
-    const t = v.currentTime;
-    const e = { id: Math.max(0, ...m.events.map(x => x.id)) + 1, time: t, start: Math.max(0, t - 10), end: Math.min(m.duration, t + 6), score: null, label: 'Added by you', type: null, side: null, manual: true };
-    m.events.push(e); m.events.sort((a, b) => a.time - b.time); DB.saveMatch(m); renderMoments(m);
-    toast(`Added a moment at ${clock(t)}`);
-  };
-  wireSeg('sensSeg', k => { applySensitivity(m, k); DB.saveMatch(m); renderMoments(m); toast(`${m.events.filter(e => e.type !== 'skip').length} moments`); });
-  const pb = $('#playerWrap'); if (pb) pb.onclick = ev => {
-    const r = ev.target.closest('[data-r]'); if (!r) return;
-    if (r.dataset.r === 'next') nextReel(1); else if (r.dataset.r === 'prev') nextReel(-1); else stopReel();
-  };
-  const v = $('#vid');
-  if (v) {
-    v.addEventListener('seeked', () => { if (S.ourSeek) { S.ourSeek = false; return; } S.clipEnd = null; if (S.reel) { S.reel = null; updateReelBar(); } });
-    S.tick = setInterval(() => {
-      const at = $('#addAt'); if (at) at.textContent = clock(v.currentTime);
-      if (S.clipEnd != null && v.currentTime >= S.clipEnd - 0.05) { if (S.reel) nextReel(); else { v.pause(); S.clipEnd = null; } }
-    }, 120);
-    if (S.pendingPlay != null) { const e = m.events.find(x => x.id === S.pendingPlay); S.pendingPlay = null; if (e) playClip(e); }
-  }
-}
 
 // ============================================================ go
 if ('serviceWorker' in navigator && (location.protocol === 'https:' || ['localhost','127.0.0.1'].includes(location.hostname))) {
