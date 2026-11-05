@@ -226,7 +226,7 @@ a.dl{display:flex;align-items:center;justify-content:center;gap:8px;text-decorat
 </head>
 <body>
 <div id="app"></div>
-<footer class="ver" id="ver">Version <b id="verTxt">5 Nov 2026, 19:23</b></footer>
+<footer class="ver" id="ver">Version <b id="verTxt">5 Nov 2026, 19:59</b></footer>
 <div id="toast" role="status" aria-live="polite"></div>
 <script>
 const DB=(()=>{
@@ -822,6 +822,16 @@ function makeAsc(aot, rate, ch) {
   return new Uint8Array([v >> 8, v & 255]);
 }
 
+// The decoder config stored in the file itself (more reliable than one we build).
+function fileAsc(mp4, id) {
+  try {
+    const e = mp4.getTrackById(id).mdia.minf.stbl.stsd.entries[0];
+    const d = e.esds && e.esds.esd && e.esds.esd.descs;
+    const dc = d && d.find(x => x.tag === 4), ds = dc && dc.descs && dc.descs.find(x => x.tag === 5);
+    return ds && ds.data && ds.data.length ? new Uint8Array(ds.data) : null;
+  } catch (_) { return null; }
+}
+
 async function readMoov(file, MP4) {
   const mp4 = MP4.createFile(false);
   let info = null; mp4.onReady = i => { info = i; }; mp4.onError = () => {};
@@ -845,13 +855,14 @@ async function decodeAudio(file, { chunkSeconds = 48, onChunk, onProgress = () =
   const track = info.audioTracks && info.audioTracks[0];
   if (!track) throw new Error('This video has no sound track.');
   const rate = track.audio.sample_rate, ch = track.audio.channel_count;
-  const cfg = { codec: track.codec.startsWith('mp4a') ? 'mp4a.40.2' : track.codec, sampleRate: rate, numberOfChannels: ch };
-  if (track.codec.startsWith('mp4a')) {
-    const aot = parseInt((track.codec.split('.')[2] || '2'), 10) || 2, asc = makeAsc(aot, rate, ch);
-    if (asc) cfg.description = asc;
-  }
-  const sup = await AudioDecoder.isConfigSupported(cfg).catch(() => ({ supported: false }));
-  if (!sup.supported) throw new Error(`Your browser cannot decode this video's sound format (${track.codec}).`);
+  const isAac = track.codec.startsWith('mp4a');
+  const real = isAac ? fileAsc(mp4, track.id) : null, built = isAac ? makeAsc(parseInt((track.codec.split('.')[2] || '2'), 10) || 2, rate, ch) : null;
+  const tries = [];
+  if (isAac) { for (const codec of [...new Set([track.codec, 'mp4a.40.2'])]) for (const d of [real, built, null]) if (d || d === null) tries.push({ codec, sampleRate: rate, numberOfChannels: ch, ...(d ? { description: d } : {}) }); }
+  else tries.push({ codec: track.codec, sampleRate: rate, numberOfChannels: ch });
+  let cfg = null;
+  for (const c of tries) { const r = await AudioDecoder.isConfigSupported(c).catch(() => ({ supported: false })); if (r.supported) { cfg = c; break; } }
+  if (!cfg) throw new Error(`Your browser cannot decode this video's sound format (${track.codec}).`);
   const samples = (mp4.getTrackSamplesInfo ? mp4.getTrackSamplesInfo(track.id) : null) || [];
   if (!samples.length) throw new Error('Could not find the sound samples in this video.');
   const order = samples.map((s, i) => i).sort((a, b) => samples[a].offset - samples[b].offset);
@@ -871,17 +882,28 @@ async function decodeAudio(file, { chunkSeconds = 48, onChunk, onProgress = () =
     }
     const keep = Math.floor(p); acc = src.slice(keep); carry = p - keep;
   };
-  const dec = new AudioDecoder({
-    output: ad => {
-      try {
-        const n = ad.numberOfFrames, mono = new Float32Array(n), tmp = new Float32Array(n);
-        for (let c = 0; c < ad.numberOfChannels; c++) { ad.copyTo(tmp, { planeIndex: c, format: 'f32-planar' }); for (let i = 0; i < n; i++) mono[i] += tmp[i] / ad.numberOfChannels; }
-        push(mono);
-      } catch (e) { err = e; } finally { ad.close(); }
-    },
-    error: e => { err = e; },
-  });
-  dec.configure(cfg);
+  let nextTs = null, errors = 0, lastErr = null, goodOut = 0;
+  const makeDec = () => {
+    const d = new AudioDecoder({
+      output: ad => {
+        try {
+          const n = ad.numberOfFrames, t = ad.timestamp / 1e6, mono = new Float32Array(n), tmp = new Float32Array(n);
+          for (let c = 0; c < ad.numberOfChannels; c++) { ad.copyTo(tmp, { planeIndex: c, format: 'f32-planar' }); for (let i = 0; i < n; i++) mono[i] += tmp[i] / ad.numberOfChannels; }
+          if (nextTs == null) nextTs = t;
+          if (t - nextTs > 0.1 && t - nextTs < 600) push(new Float32Array(Math.round((t - nextTs) * rate))); // keep timing across skipped frames
+          push(mono); nextTs = t + n / rate; goodOut++;
+        } catch (e) { err = e; } finally { ad.close(); }
+      },
+      error: e => { err = e; },
+    });
+    d.configure(cfg); return d;
+  };
+  let dec = makeDec();
+  const recover = () => {   // the decoder shut itself down on a bad frame: note it, start a fresh one, carry on
+    lastErr = err || lastErr; err = null; errors++;
+    if (errors > 60 && goodOut < 50) throw new Error('The sound could not be decoded: ' + (lastErr && lastErr.message || 'unknown error') + ` (${track.codec}, ${rate} Hz, ${ch} ch)`);
+    if (dec.state === 'closed') dec = makeDec();
+  };
 
   const WIN = 12 * 1048576; let fed = 0;
   while (fed < order.length) {
@@ -892,23 +914,27 @@ async function decodeAudio(file, { chunkSeconds = 48, onChunk, onProgress = () =
     while (fed < order.length) {
       const s = samples[order[fed]];
       if (s.offset >= start + WIN || s.offset + s.size > start + buf.length) break;
-      dec.decode(new EncodedAudioChunk({ type: s.is_sync ? 'key' : 'delta', timestamp: Math.round(s.cts * 1e6 / s.timescale), duration: Math.round(s.duration * 1e6 / s.timescale), data: buf.subarray(s.offset - start, s.offset - start + s.size) }));
+      const ch1 = new EncodedAudioChunk({ type: s.is_sync ? 'key' : 'delta', timestamp: Math.round(s.cts * 1e6 / s.timescale), duration: Math.round(s.duration * 1e6 / s.timescale), data: buf.subarray(s.offset - start, s.offset - start + s.size) });
+      if (err || dec.state === 'closed') recover();
+      try { dec.decode(ch1); } catch (e) { err = err || e; recover(); try { dec.decode(ch1); } catch (e2) { err = e2; } }
       fed++;
       if (dec.decodeQueueSize > 200) await new Promise(r => setTimeout(r, 0));
     }
-    while (dec.decodeQueueSize > 0) await new Promise(r => setTimeout(r, 0));
-    if (err) throw err;
+    while (dec.state !== 'closed' && dec.decodeQueueSize > 0) await new Promise(r => setTimeout(r, 0));
+    if (err || dec.state === 'closed') recover();
     while (ready.length) { const c = ready.shift(); await onChunk(c.data, c.start); }
     onProgress(fed / order.length);
     if (fed === before) throw new Error('Sound reader stalled');
   }
   if (!(signal && signal.aborted)) {
-    await dec.flush(); if (err) throw err;
+    try { await dec.flush(); } catch (e) { err = err || e; }
+    if (err) { lastErr = err; err = null; }
     while (ready.length) { const c = ready.shift(); await onChunk(c.data, c.start); }
     if (outN > 0) await onChunk(outBuf.slice(0, outN), emitted / OUT);
   }
   try { dec.close(); } catch (_) {}
-  return { duration: (emitted + outN) / OUT, sampleRate: rate, channels: ch, codec: track.codec };
+  if (goodOut === 0) throw new Error('The sound could not be decoded: ' + (lastErr && lastErr.message || 'no audio came out') + ` (${track.codec}, ${rate} Hz, ${ch} ch)`);
+  return { duration: (emitted + outN) / OUT, sampleRate: rate, channels: ch, codec: track.codec, skipped: errors };
 }
 
 return {audioSupported,decodeAudio};})();
