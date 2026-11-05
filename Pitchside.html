@@ -218,12 +218,15 @@ a.dl{display:flex;align-items:center;justify-content:center;gap:8px;text-decorat
 .sheet button.primary:disabled{opacity:.4}
 .cand input{width:22px;min-height:22px;height:22px;padding:0;flex:none;accent-color:var(--ink)}
 .cand span{flex:none}
+.evs{list-style:none;margin:8px 0;padding:0}.evs li{padding:8px 0;border-bottom:1px solid var(--line);font-size:15px;display:flex;gap:8px;align-items:center;flex-wrap:wrap}
+.evs .ok{color:#2f9e5b;font-weight:700}.evs .no{color:var(--muted)}.evs button{margin-left:auto;min-height:36px;padding:0 14px}
+.cand.big{align-items:flex-start}.chips{display:flex;flex-wrap:wrap;gap:4px;flex:1}.chip{font-style:normal;font-size:12px;padding:3px 8px;border-radius:99px;background:var(--bg);border:1px solid var(--line)}
 
 </style>
 </head>
 <body>
 <div id="app"></div>
-<footer class="ver" id="ver">Version <b id="verTxt">5 Nov 2026, 15:52</b></footer>
+<footer class="ver" id="ver">Version <b id="verTxt">5 Nov 2026, 19:23</b></footer>
 <div id="toast" role="status" aria-live="polite"></div>
 <script>
 const DB=(()=>{
@@ -256,7 +259,7 @@ const deleteMatch = id => tx('readwrite', s => s.delete(id));
 const newId = () => (self.crypto && crypto.randomUUID) ? crypto.randomUUID() : Date.now().toString(36) + Math.random().toString(36).slice(2, 8);
 
 return {allMatches,getMatch,saveMatch,deleteMatch,newId};})();
-const {makeHighlightsVideo,pickMime}=(()=>{
+const {pickMime,makeHighlightsVideo}=(()=>{
 // Pitchside highlights exporter.
 // Plays the chosen clips from the match video into a canvas, draws a broadcast-style score graphic on top,
 // and records the result with MediaRecorder. Everything happens in the browser; nothing is uploaded.
@@ -454,8 +457,87 @@ async function makeHighlightsVideo(file, { clips, us, them, title = 'Highlights'
   } finally { cleanup(); }
 }
 
-return {makeHighlightsVideo,pickMime};})();
-const {loadBallSession,scanBall,hasWebGPU,cleanTrack,suggestZones,findCandidates}=(()=>{
+return {pickMime,makeHighlightsVideo};})();
+const {SOURCES,fuse,soundEvents,speechEvents,GOAL_WORDS,isGoalTalk,isStrongGoalTalk}=(()=>{
+// Pitchside smart goal finder: merges every weak signal (scoreboard, ball + kick-off, crowd noise, cheering/whistle
+// sound classifier, spoken "goal") into one ranked list. If the final score is known, the best N are picked.
+// Pure functions, no browser needed.
+
+const SOURCES = {
+  ball: { label: 'Ball in goal, then kick-off', rank: 0 },
+  board: { label: 'Scoreboard changed', rank: 1 },
+  ballMaybe: { label: 'Ball reached the goal', rank: 2 },
+  speech: { label: 'Someone said "goal"', rank: 3 },
+  cheer: { label: 'Cheering', rank: 4 },
+  crowd: { label: 'Crowd roar', rank: 5 },
+};
+
+// events: [{ src, t, conf (0-1), side?, note? }]. Returns candidates sorted by time:
+// [{ time, score, evidence: [{ src, label, conf }], side, picked }]
+function fuse(events, { n = null, window: win = 25, span = 45, threshold = 0.55 } = {}) {
+  const ev = events.filter(e => e && isFinite(e.t) && e.conf > 0).map(e => ({ ...e })).sort((a, b) => a.t - b.t);
+  const clusters = [];
+  for (const e of ev) {
+    const c = clusters[clusters.length - 1];
+    if (c && e.t - c.last <= win && e.t - c.first <= span) { c.items.push(e); c.last = e.t; }
+    else clusters.push({ items: [e], first: e.t, last: e.t });
+  }
+  const out = clusters.map(c => {
+    const best = {}; // strongest event per source
+    for (const e of c.items) if (!best[e.src] || e.conf > best[e.src].conf) best[e.src] = e;
+    const list = Object.values(best).sort((a, b) => SOURCES[a.src].rank - SOURCES[b.src].rank);
+    let miss = 1; for (const e of list) miss *= 1 - Math.min(0.97, e.conf);
+    const lead = list[0]; // most trustworthy time stamp wins
+    const withSide = list.find(e => e.side);
+    return { time: lead.t, score: Math.round((1 - miss) * 100) / 100, side: withSide ? withSide.side : null,
+             evidence: list.map(e => ({ src: e.src, label: e.note || SOURCES[e.src].label, conf: Math.round(e.conf * 100) / 100 })), picked: false };
+  });
+  const ranked = out.slice().sort((a, b) => b.score - a.score || a.time - b.time);
+  const take = n != null ? ranked.slice(0, n) : ranked.filter(c => c.score >= threshold);
+  take.forEach(c => { c.picked = true; });
+  return out.sort((a, b) => a.time - b.time);
+}
+
+// ---- evidence from the sound classifier (YAMNet): series of 0-255 values, one per `hop` seconds ----
+function smooth(a, k = 1) { return a.map((_, i) => { let s = 0, c = 0; for (let j = i - k; j <= i + k; j++) if (j >= 0 && j < a.length) { s += a[j]; c++; } return s / c; }); }
+function pct(arr, p) { const s = arr.slice().sort((a, b) => a - b); return s[Math.min(s.length - 1, Math.floor(p / 100 * s.length))] || 0; }
+
+function soundEvents(sound) {
+  if (!sound || !sound.cheer || sound.cheer.length < 20) return [];
+  const hop = sound.hop || 0.48, n = sound.cheer.length;
+  const cheer = smooth(sound.cheer.map((v, i) => Math.max(v, sound.applause ? sound.applause[i] : 0, 0.5 * (sound.crowd ? sound.crowd[i] : 0)) / 255), 2);
+  const whistle = smooth((sound.whistle || new Array(n).fill(0)).map(v => v / 255), 1);
+  const floor = Math.max(0.2, pct(cheer, 92));
+  const peaks = [];
+  for (let i = 1; i < n - 1; i++) if (cheer[i] >= floor && cheer[i] >= cheer[i - 1] && cheer[i] > cheer[i + 1]) peaks.push(i);
+  peaks.sort((a, b) => cheer[b] - cheer[a]);
+  const kept = [];
+  for (const p of peaks) if (kept.every(q => Math.abs(q - p) * hop >= 20)) kept.push(p);
+  const out = [];
+  for (const p of kept.sort((a, b) => a - b)) {
+    let s = p; while (s > 0 && cheer[s - 1] > cheer[p] * 0.5 && (p - s) * hop < 15) s--;     // where the cheer starts
+    let conf = Math.min(0.55, Math.max(0.2, 0.2 + 0.4 * (cheer[p] - 0.25) / 0.5));
+    let note = 'Cheering';
+    const w0 = Math.floor((s * hop + 15) / hop), w1 = Math.min(n - 1, Math.floor((s * hop + 100) / hop));
+    let wmax = 0; for (let j = w0; j <= w1; j++) wmax = Math.max(wmax, whistle[j] || 0);
+    if (wmax >= 0.3) { conf = Math.min(0.7, conf + 0.1); note = 'Cheering, then a whistle'; }
+    out.push({ src: 'cheer', t: Math.max(0, s * hop - 1), conf, note });
+  }
+  return out;
+}
+
+// ---- evidence from speech: hits = [{ t, text, strong }] ----
+function speechEvents(speech) {
+  if (!speech || !speech.hits) return [];
+  return speech.hits.map(h => ({ src: 'speech', t: Math.max(0, h.t - 2), conf: h.strong ? 0.45 : 0.2, note: `Heard: "${String(h.text).slice(0, 40)}"` }));
+}
+
+const GOAL_WORDS = [/\bgoal+s?\b/i, /\bscor(e|ed|es)\b/i, /\bget in\b/i, /\bwhat a (strike|finish|hit|goal)\b/i, /\bin the back of the net\b/i, /\bone[- ]nil\b|\btwo[- ]nil\b/i];
+function isGoalTalk(text) { return GOAL_WORDS.some(r => r.test(text)); }
+function isStrongGoalTalk(text) { return /\bgoal+s?\b|\bin the back of the net\b/i.test(text); }
+
+return {SOURCES,fuse,soundEvents,speechEvents,GOAL_WORDS,isGoalTalk,isStrongGoalTalk};})();
+const {mmss,cleanTrack,suggestZones,restarts,findCandidates,parseOutput,getOrt,hasWebGPU,loadBallSession,detectOnce,scanBall}=(()=>{
 // Pitchside ball tracker: runs a football ball detector (an .onnx file) in the browser with ONNX Runtime Web,
 // then turns the ball positions into goal candidates. Needs the hosted version (WebGPU/WASM files are loaded
 // from js/vendor/ort/). The goal logic below is a port of the Colab notebook's, so both give the same answer.
@@ -722,8 +804,236 @@ async function scanBall(file, sess, { sampleFps = 2, conf = 0.15, ballClass = nu
   } finally { cleanup(); }
 }
 
-return {loadBallSession,scanBall,hasWebGPU,cleanTrack,suggestZones,findCandidates};})();
-const {scanVideo,probeVideo,processSignals,findGoals,findScoreChanges,snapToRoar,trainGoalModel}=(()=>{
+return {mmss,cleanTrack,suggestZones,restarts,findCandidates,parseOutput,getOrt,hasWebGPU,loadBallSession,detectOnce,scanBall};})();
+const {audioSupported,decodeAudio}=(()=>{
+// Fast audio reader: pulls the sound out of an MP4/MOV video without playing it, using the browser's own audio
+// decoder (WebCodecs, in Chrome and Edge). Streams 16 kHz mono chunks to a callback, so a 52-minute match takes about
+// a minute instead of 52. Other video types are not supported by this path.
+
+const base = () => new URL('js/vendor/mp4box/', document.baseURI).href;
+const RATES = [96000, 88200, 64000, 48000, 44100, 32000, 24000, 22050, 16000, 12000, 11025, 8000, 7350];
+
+function audioSupported() { return typeof AudioDecoder !== 'undefined'; }
+
+// AAC "AudioSpecificConfig" built from the codec string (mp4a.40.2), sample rate and channel count.
+function makeAsc(aot, rate, ch) {
+  const idx = RATES.indexOf(rate); if (idx < 0) return null;
+  const v = (aot << 11) | (idx << 7) | (ch << 3);
+  return new Uint8Array([v >> 8, v & 255]);
+}
+
+async function readMoov(file, MP4) {
+  const mp4 = MP4.createFile(false);
+  let info = null; mp4.onReady = i => { info = i; }; mp4.onError = () => {};
+  let pos = 0, guard = 0;
+  while (!info && pos != null && pos < file.size && guard++ < 60) {
+    const end = Math.min(file.size, pos + 4 * 1048576);
+    const buf = await file.slice(pos, end).arrayBuffer(); buf.fileStart = pos;
+    const next = mp4.appendBuffer(buf);
+    if (info) break;
+    pos = typeof next === 'number' && next > pos ? next : end;
+  }
+  if (!info) throw new Error("Could not read this video's structure. The sound reader needs an .mp4 or .mov file.");
+  return { mp4, info };
+}
+
+// onChunk(Float32Array mono 16 kHz, startSeconds) is awaited, so slow consumers apply back-pressure.
+async function decodeAudio(file, { chunkSeconds = 48, onChunk, onProgress = () => {}, signal } = {}) {
+  if (!audioSupported()) throw new Error('This needs Chrome or Edge on a computer (your browser cannot decode sound this way).');
+  const MP4 = await import(base() + 'mp4box.all.mjs');
+  const { mp4, info } = await readMoov(file, MP4);
+  const track = info.audioTracks && info.audioTracks[0];
+  if (!track) throw new Error('This video has no sound track.');
+  const rate = track.audio.sample_rate, ch = track.audio.channel_count;
+  const cfg = { codec: track.codec.startsWith('mp4a') ? 'mp4a.40.2' : track.codec, sampleRate: rate, numberOfChannels: ch };
+  if (track.codec.startsWith('mp4a')) {
+    const aot = parseInt((track.codec.split('.')[2] || '2'), 10) || 2, asc = makeAsc(aot, rate, ch);
+    if (asc) cfg.description = asc;
+  }
+  const sup = await AudioDecoder.isConfigSupported(cfg).catch(() => ({ supported: false }));
+  if (!sup.supported) throw new Error(`Your browser cannot decode this video's sound format (${track.codec}).`);
+  const samples = (mp4.getTrackSamplesInfo ? mp4.getTrackSamplesInfo(track.id) : null) || [];
+  if (!samples.length) throw new Error('Could not find the sound samples in this video.');
+  const order = samples.map((s, i) => i).sort((a, b) => samples[a].offset - samples[b].offset);
+
+  // streaming resampler to 16 kHz mono (area average)
+  const OUT = 16000, ratio = rate / OUT, perChunk = Math.round(chunkSeconds * OUT);
+  let acc = new Float32Array(0), carry = 0 /* source samples already consumed */, outBuf = new Float32Array(perChunk), outN = 0, emitted = 0;
+  const ready = []; let err = null;
+  const push = (mono) => {                                   // mono at source rate -> 16 kHz appended to outBuf
+    const src = acc.length ? (() => { const a = new Float32Array(acc.length + mono.length); a.set(acc); a.set(mono, acc.length); return a; })() : mono;
+    let p = carry, n = 0;
+    while (p + ratio <= src.length) {
+      const i0 = Math.floor(p), i1 = Math.floor(p + ratio); let s = 0, c = 0;
+      for (let i = i0; i < i1; i++) { s += src[i]; c++; }
+      outBuf[outN++] = c ? s / c : 0; p += ratio; n++;
+      if (outN === perChunk) { ready.push({ data: outBuf, start: emitted / OUT }); emitted += perChunk; outBuf = new Float32Array(perChunk); outN = 0; }
+    }
+    const keep = Math.floor(p); acc = src.slice(keep); carry = p - keep;
+  };
+  const dec = new AudioDecoder({
+    output: ad => {
+      try {
+        const n = ad.numberOfFrames, mono = new Float32Array(n), tmp = new Float32Array(n);
+        for (let c = 0; c < ad.numberOfChannels; c++) { ad.copyTo(tmp, { planeIndex: c, format: 'f32-planar' }); for (let i = 0; i < n; i++) mono[i] += tmp[i] / ad.numberOfChannels; }
+        push(mono);
+      } catch (e) { err = e; } finally { ad.close(); }
+    },
+    error: e => { err = e; },
+  });
+  dec.configure(cfg);
+
+  const WIN = 12 * 1048576; let fed = 0;
+  while (fed < order.length) {
+    if (signal && signal.aborted) break;
+    const before = fed;
+    const first = samples[order[fed]], start = first.offset;
+    const buf = new Uint8Array(await file.slice(start, Math.min(file.size, start + WIN + 65536)).arrayBuffer());
+    while (fed < order.length) {
+      const s = samples[order[fed]];
+      if (s.offset >= start + WIN || s.offset + s.size > start + buf.length) break;
+      dec.decode(new EncodedAudioChunk({ type: s.is_sync ? 'key' : 'delta', timestamp: Math.round(s.cts * 1e6 / s.timescale), duration: Math.round(s.duration * 1e6 / s.timescale), data: buf.subarray(s.offset - start, s.offset - start + s.size) }));
+      fed++;
+      if (dec.decodeQueueSize > 200) await new Promise(r => setTimeout(r, 0));
+    }
+    while (dec.decodeQueueSize > 0) await new Promise(r => setTimeout(r, 0));
+    if (err) throw err;
+    while (ready.length) { const c = ready.shift(); await onChunk(c.data, c.start); }
+    onProgress(fed / order.length);
+    if (fed === before) throw new Error('Sound reader stalled');
+  }
+  if (!(signal && signal.aborted)) {
+    await dec.flush(); if (err) throw err;
+    while (ready.length) { const c = ready.shift(); await onChunk(c.data, c.start); }
+    if (outN > 0) await onChunk(outBuf.slice(0, outN), emitted / OUT);
+  }
+  try { dec.close(); } catch (_) {}
+  return { duration: (emitted + outN) / OUT, sampleRate: rate, channels: ch, codec: track.codec };
+}
+
+return {audioSupported,decodeAudio};})();
+const {YAMNET_URL,CLS,HOP,loadYamnet,classify,scanSound,savedYamnet,keepYamnet,getYamnetBuffer}=(()=>{
+// Cheering / crowd / whistle detector: runs Google's YAMNet sound classifier (an .onnx file, Apache-2.0) over the
+// match sound. The model is downloaded once from Hugging Face by your browser and kept on this device, or you can
+// pick the file yourself. Needs the hosted version (it uses the ONNX Runtime files in js/vendor/ort/).
+
+const YAMNET_URL = 'https://huggingface.co/audiomagic/yamnet-onnx/resolve/main/yamnet.onnx';
+// AudioSet class numbers in YAMNet's 521-class list
+const CLS = { speech: 0, shout: 6, yell: 9, cheer: 61, applause: 62, crowd: 64, whistle: 396 };
+const HOP = 0.48;           // seconds between frames
+const FRAME = 15360, STEP = 7680;  // 0.96 s window, 0.48 s hop at 16 kHz
+
+async function loadYamnet(buffer, { onStatus = () => {} } = {}) {
+  const ort = await getOrt();
+  onStatus('Loading the sound model…');
+  const session = await ort.InferenceSession.create(buffer instanceof Uint8Array ? buffer : new Uint8Array(buffer), { executionProviders: ['wasm'], graphOptimizationLevel: 'all' });
+  const inName = session.inputNames[0], outName = session.outputNames[0];
+  const sess = { ort, session, inName, outName };
+  const warm = await classify(sess, new Float32Array(FRAME * 3));  // proves the model runs here
+  if (!warm || !warm.dims || warm.dims[warm.dims.length - 1] !== 521) throw new Error('That does not look like the YAMNet model (expected 521 sound classes).');
+  return sess;
+}
+
+// waveform (16 kHz mono) -> { data: Float32Array frames*521, dims }
+async function classify(sess, wave) {
+  const out = await sess.session.run({ [sess.inName]: new sess.ort.Tensor('float32', wave, [wave.length]) });
+  const t = out[sess.outName];
+  return { data: t.data, dims: t.dims };
+}
+
+// Scan a whole match. Returns { hop, cheer, applause, crowd, shout, whistle, speech } as arrays of 0-255 values.
+async function scanSound(file, sess, { onProgress = () => {}, signal } = {}) {
+  const keys = { cheer: [CLS.cheer], applause: [CLS.applause], crowd: [CLS.crowd], shout: [CLS.shout, CLS.yell], whistle: [CLS.whistle], speech: [CLS.speech] };
+  const series = {}; for (const k in keys) series[k] = [];
+  let frames = 0;
+  const info = await decodeAudio(file, {
+    chunkSeconds: 48, signal,
+    onProgress: f => onProgress({ frac: f, seconds: frames * HOP }),
+    onChunk: async (wave, start) => {
+      if (wave.length < FRAME) return;
+      const r = await classify(sess, wave), n = r.dims[0], C = r.dims[r.dims.length - 1];
+      const base = Math.round(start / HOP);
+      while (frames < base) { for (const k in series) series[k].push(series[k].length ? series[k][series[k].length - 1] : 0); frames++; } // gap between chunks
+      for (let i = 0; i < n; i++) {
+        for (const k in keys) { let v = 0; for (const c of keys[k]) v = Math.max(v, r.data[i * C + c]); series[k].push(Math.max(0, Math.min(255, Math.round(v * 255)))); }
+        frames++;
+      }
+    },
+  });
+  return { hop: HOP, duration: info.duration, ...series };
+}
+
+// ---- keep the model on this device (Cache API) ----
+const KEEP = 'pitchside-keep', KEY = '/__pitchside_yamnet';
+async function savedYamnet() {
+  try { const c = await caches.open(KEEP), r = await c.match(KEY); return r ? await r.arrayBuffer() : null; } catch (_) { return null; }
+}
+async function keepYamnet(buffer) {
+  try { const c = await caches.open(KEEP); await c.put(KEY, new Response(buffer)); } catch (_) {}
+}
+// Try the saved copy, then Hugging Face. Returns an ArrayBuffer or throws a friendly error.
+async function getYamnetBuffer(onStatus = () => {}) {
+  const saved = await savedYamnet(); if (saved) return saved;
+  onStatus('Downloading the sound model (about 15 MB, once)…');
+  let res; try { res = await fetch(YAMNET_URL); } catch (_) { throw new Error('NEEDFILE: Could not download the sound model (Hugging Face may be blocked here). Download yamnet.onnx yourself and choose it.'); }
+  if (!res.ok) throw new Error('NEEDFILE: Could not download the sound model (' + res.status + '). Download yamnet.onnx yourself and choose it.');
+  const buf = await res.arrayBuffer(); await keepYamnet(buf); return buf;
+}
+
+return {YAMNET_URL,CLS,HOP,loadYamnet,classify,scanSound,savedYamnet,keepYamnet,getYamnetBuffer};})();
+const {WHISPER_MODEL,loadWhisper,scanSpeech}=(()=>{
+// Spoken-"goal" detector: runs the Whisper speech recogniser (tiny English model) in your browser over the match
+// sound and notes when someone says "goal" or similar. The model (about 40 MB) is downloaded once from Hugging Face by
+// your browser and kept by it. Needs the hosted version (runtime files are in js/vendor/hf/).
+
+const WHISPER_MODEL = 'onnx-community/whisper-tiny.en';
+let lib = null;
+
+async function loadWhisper({ onStatus = () => {}, onProgress = () => {} } = {}) {
+  if (!lib) {
+    const base = new URL('js/vendor/hf/', document.baseURI).href;
+    try { lib = await import(base + 'transformers.min.js'); } catch (e) {
+      throw new Error('The speech detector needs the hosted version of Pitchside (the web address), not the single file.');
+    }
+    lib.env.allowLocalModels = false; lib.env.useBrowserCache = true;
+    lib.env.backends.onnx.wasm.wasmPaths = base; lib.env.backends.onnx.wasm.numThreads = 1; lib.env.backends.onnx.wasm.proxy = false;
+  }
+  onStatus('Loading the speech model (about 40 MB the first time)…');
+  try {
+    return await lib.pipeline('automatic-speech-recognition', WHISPER_MODEL, {
+      dtype: 'q8', device: 'wasm',
+      progress_callback: p => { if (p && p.status === 'progress' && p.total) onProgress(p.loaded / p.total); },
+    });
+  } catch (e) {
+    throw new Error('Could not download the speech model (Hugging Face may be blocked here). ' + (e && e.message ? e.message : ''));
+  }
+}
+
+// asr: a function (Float32Array 16 kHz mono) -> { text, chunks: [{ text, timestamp: [start, end] }] }
+async function scanSpeech(file, asr, { onProgress = () => {}, signal } = {}) {
+  const hits = []; let words = 0, chunks = 0, skipped = 0;
+  await decodeAudio(file, {
+    chunkSeconds: 30, signal,
+    onProgress: f => onProgress({ frac: f, hits: hits.length }),
+    onChunk: async (wave, start) => {
+      if (signal && signal.aborted) return;
+      let e = 0; for (let i = 0; i < wave.length; i += 16) e += wave[i] * wave[i];
+      if (Math.sqrt(e / (wave.length / 16)) < 0.004) { skipped++; return; }          // silence
+      const r = await asr(wave, { return_timestamps: true });
+      chunks++;
+      const segs = (r && r.chunks && r.chunks.length) ? r.chunks : (r && r.text ? [{ text: r.text, timestamp: [0, 0] }] : []);
+      for (const s of segs) {
+        const text = String(s.text || '').trim(); if (!text) continue;
+        words += text.split(/\s+/).length;
+        if (isGoalTalk(text)) hits.push({ t: start + ((s.timestamp && s.timestamp[0]) || 0), text, strong: isStrongGoalTalk(text) });
+      }
+    },
+  });
+  return { words, chunks, skipped, hits };
+}
+
+return {WHISPER_MODEL,loadWhisper,scanSpeech};})();
+const {DEFAULTS,percentile,processSignals,trainGoalModel,findGoals,findScoreChanges,snapToRoar,probeVideo,scanVideo}=(()=>{
 // Pitchside scan engine.
 // scanVideo(): plays the match video fast in a hidden <video>, sampling audio (Web Audio) and
 //              frames (canvas) twice per second of match time. Nothing leaves the device.
@@ -1197,7 +1507,7 @@ async function scanVideo(file, { rate = 4, sampleFps = 2, onProgress = () => {},
   } finally { cleanup(); }
 }
 
-return {DEFAULTS,percentile,processSignals,probeVideo,scanVideo,findGoals,findScoreChanges,snapToRoar,trainGoalModel};})();
+return {DEFAULTS,percentile,processSignals,trainGoalModel,findGoals,findScoreChanges,snapToRoar,probeVideo,scanVideo};})();
 
 // ============================================================ helpers
 const $ = (s, r = document) => r.querySelector(s);
@@ -1462,6 +1772,9 @@ async function setupView(m) {
       <p>Optional. Mark where the two score numbers are and the scan will notice every time one changes. That gives you the goal times and who scored, automatically.</p>
       <p class="note" id="sbState">${m.scoreBoxes ? 'Score area set. It will be read during the scan.' : ''}</p>
       <button class="ghost wide" id="markScore" ${has ? '' : 'disabled'}>${m.scoreBoxes ? 'Change the score area' : 'Mark the score area'}</button></section>
+    <section class="card quiet" id="smartCard"><h3>Smart goal finder (beta)</h3>
+      <p>Combines every clue: the scoreboard, ball tracking, crowd noise, cheering and whistles, and anyone shouting &ldquo;goal&rdquo;. Tell it the final score and it keeps that many of the most likely goals.</p>
+      <button class="ghost wide" id="goSmart">Open the smart goal finder</button></section>
     <section class="card quiet" id="ballCard"><h3>Track the ball (beta)</h3>
       <p>Uses a football ball detector that runs in your browser to find the goals itself: the ball reaching a goal, then a kick-off from the centre spot. It is slow but needs no tagging. You need a ball model file (<code>.onnx</code>), loaded once.</p>
       <p class="note" id="ballState">${ballStateText()}</p>
@@ -1485,6 +1798,7 @@ async function setupView(m) {
   const bm = $('#ballModel'); if (bm) bm.onchange = e => chooseBallModel(m, e.target.files[0]);
   wireSeg('ballSeg', v => { S.ballFps = +v; ballEta(m); }); ballEta(m);
   const gbl = $('#goBall'); if (gbl) gbl.onclick = () => runBallScan(m);
+  const gsm = $('#goSmart'); if (gsm) gsm.onclick = () => smartFinder(m);
   const ms = $('#markScore'); if (ms) ms.onclick = () => markScoreArea(m, () => setupView(m));
   $('#skipScan').onclick = async () => { m.events = []; m.curves = null; m.raw = null; m.duration = m.video.duration; m.half = m.halfTime || m.duration / 2; await DB.saveMatch(m); go(`#/match/${m.id}/moments`); };
   $('#ifile').onchange = async e => {
@@ -1851,6 +2165,116 @@ async function runExport(m) {
   }
 }
 
+// ------------------------------------------------------------ smart goal finder
+S.yam = null;
+function evidenceFor(m, n) {
+  const ev = [], notes = {};
+  if (m.raw) {
+    const cs = findGoals(m.raw, m.duration, { n: Math.max(12, (n || 6) * 3), halfTime: m.halfTime, sampleFps: 2, model: loadModel() });
+    const top = Math.max(0.0001, ...cs.map(c => c.score));
+    cs.forEach(c => ev.push({ src: 'crowd', t: c.time, conf: 0.2 + 0.3 * (c.score / top) })); notes.crowd = cs.length;
+  }
+  if (m.scoreEvents && m.scoreEvents.length) { m.scoreEvents.forEach(e => ev.push({ src: 'board', t: e.time, conf: m.scoreNoisy ? 0.35 : 0.9, side: e.side })); notes.board = m.scoreEvents.length; }
+  if (m.ballTrack) {
+    const pts = cleanTrack(m.ballTrack.rows, m.ballTrack.duration || m.duration);
+    if (pts.length >= 20) {
+      const z = m.ballTrack.zones || suggestZones(pts);
+      const cs = findCandidates(pts, z, { sampleFps: m.ballTrack.fps || 2 });
+      cs.forEach(c => ev.push({ src: c.restart ? 'ball' : 'ballMaybe', t: c.time, conf: c.restart ? 0.65 : 0.25 })); notes.ball = cs.length;
+    }
+  }
+  if (m.sound) { const se = soundEvents(m.sound); ev.push(...se); notes.cheer = se.length; }
+  if (m.speech) { const sp = speechEvents(m.speech); ev.push(...sp); notes.speech = sp.length; }
+  return { ev, notes };
+}
+function smartFinder(m) {
+  if (!haveFile(m) && !m.raw && !m.scoreEvents && !m.ballTrack) return needVideo();
+  let ctrl = null, picks = new Set(), cands = [], busy = false;
+  const scrim = document.createElement('div'); scrim.className = 'scrim';
+  document.body.appendChild(scrim);
+  const status = (ok, text) => `<span class="${ok ? 'ok' : 'no'}">${ok ? '&#10003;' : '&ndash;'}</span> ${text}`;
+  let typed = (m.finalUs != null && m.finalThem != null) ? [String(m.finalUs), String(m.finalThem)] : ['', ''];
+  const render = (msg) => {
+    if ($('#sfUs')) typed = [$('#sfUs').value, $('#sfThem').value];   // keep what was typed across redraws
+    const score = typed;
+    scrim.innerHTML = `<div class="sheet wide" role="dialog" aria-label="Smart goal finder"><h4>Smart goal finder</h4>
+      <div class="fs"><label>${esc(m.us)}<input id="sfUs" type="number" inputmode="numeric" min="0" max="30" value="${score[0]}"></label>
+        <label>${esc(m.them)}<input id="sfThem" type="number" inputmode="numeric" min="0" max="30" value="${score[1]}"></label></div>
+      <p class="note">Final score (optional, but it makes the result much better).</p>
+      <ul class="evs">
+        <li>${status(!!m.raw, 'Crowd noise &mdash; ' + (m.raw ? 'from the match scan' : 'run <b>Scan match</b> on the setup screen first'))}</li>
+        <li>${status(!!(m.scoreEvents && m.scoreEvents.length), 'Scoreboard &mdash; ' + (m.scoreEvents ? m.scoreEvents.length + ' score changes' : 'not marked (optional)'))}</li>
+        <li>${status(!!m.ballTrack, 'Ball tracking &mdash; ' + (m.ballTrack ? 'done' : 'run it from the setup screen (optional)'))}</li>
+        <li>${status(!!m.sound, 'Cheering and whistles &mdash; ' + (m.sound ? 'done' : 'not run'))} <button class="ghost sm" id="sfSound" ${busy ? 'disabled' : ''}>${m.sound ? 'Redo' : 'Listen'}</button></li>
+        <li>${status(!!m.speech, 'Spoken &ldquo;goal&rdquo; &mdash; ' + (m.speech ? m.speech.hits.length + ' mentions in ' + m.speech.words + ' words heard' : 'not run (needs voices on the recording)'))} <button class="ghost sm" id="sfSpeech" ${busy ? 'disabled' : ''}>${m.speech ? 'Redo' : 'Listen'}</button></li>
+      </ul>
+      <p class="note" id="sfMsg">${msg || ''}</p>
+      <div id="sfList"></div>
+      <button class="primary wide" id="sfGo" ${busy ? 'disabled' : ''}>Find the goals</button>
+      <button class="primary wide" id="sfAdd" hidden></button>
+      <button class="cancel" id="sfClose">${busy ? 'Cancel' : 'Close'}</button></div>`;
+    $('#sfClose').onclick = () => { if (ctrl) ctrl.abort(); scrim.remove(); };
+    $('#sfSound').onclick = () => runSound(); $('#sfSpeech').onclick = () => runSpeech(); $('#sfGo').onclick = () => combine();
+  };
+  const setMsg = t => { const e = $('#sfMsg'); if (e) e.textContent = t; };
+  const needAudio = () => { if (!haveFile(m)) { toast('Attach the match video first'); return false; } if (!audioSupported()) { setMsg('This needs Chrome or Edge on a computer.'); return false; } return true; };
+  const wasLong = (p) => `${clock((p.seconds != null ? p.seconds : 0))} listened to`;
+  async function runSound(fileForModel) {
+    if (!needAudio()) return; busy = true; render('Starting…'); ctrl = new AbortController();
+    try {
+      if (!S.yam) {
+        let buf = fileForModel || await getYamnetBuffer(t => setMsg(t));
+        S.yam = await loadYamnet(buf, { onStatus: t => setMsg(t) });
+        if (fileForModel) await keepYamnet(fileForModel);
+      }
+      const r = await scanSound(S.file, S.yam, { signal: ctrl.signal, onProgress: p => setMsg(`Listening… ${Math.round(p.frac * 100)}% (${clock(p.seconds)} of the match)`) });
+      if (!ctrl.signal.aborted) { m.sound = { hop: r.hop, cheer: r.cheer, applause: r.applause, crowd: r.crowd, shout: r.shout, whistle: r.whistle, speech: r.speech }; await DB.saveMatch(m); }
+      busy = false; render(ctrl.signal.aborted ? 'Stopped.' : 'Done. Cheering and whistles recorded.');
+    } catch (err) {
+      busy = false; S.yam = null;
+      if ((err.message || '').startsWith('NEEDFILE')) {
+        render(err.message.replace('NEEDFILE: ', ''));
+        const sf = $('#sfSound'); sf.textContent = 'Choose yamnet.onnx';
+        sf.onclick = () => { const i = document.createElement('input'); i.type = 'file'; i.accept = '.onnx'; i.onchange = async () => { if (i.files[0]) runSound(await i.files[0].arrayBuffer()); }; i.click(); };
+      } else render(err.message || 'The sound scan failed');
+    }
+  }
+  async function runSpeech() {
+    if (!needAudio()) return; busy = true; render('Starting…'); ctrl = new AbortController();
+    try {
+      if (!S.asr) S.asr = await loadWhisper({ onStatus: t => setMsg(t), onProgress: f => setMsg(`Downloading the speech model… ${Math.round(f * 100)}%`) });
+      const r = await scanSpeech(S.file, S.asr, { signal: ctrl.signal, onProgress: p => setMsg(`Listening for words… ${Math.round(p.frac * 100)}% · ${p.hits} mention${p.hits === 1 ? '' : 's'} of goals so far`) });
+      if (!ctrl.signal.aborted) { m.speech = { words: r.words, hits: r.hits }; await DB.saveMatch(m); }
+      busy = false; render(ctrl.signal.aborted ? 'Stopped.' : (r.words < 30 ? 'Done, but hardly any speech was heard, so this clue will not help on this recording.' : 'Done.'));
+    } catch (err) { busy = false; S.asr = null; render(err.message || 'The speech scan failed'); }
+  }
+  function combine() {
+    const a = parseInt($('#sfUs').value, 10), b = parseInt($('#sfThem').value, 10);
+    const known = a >= 0 && b >= 0 ? a + b : null;
+    if (known === 0) return setMsg('0–0, so there are no goals to find.');
+    if (known != null) { m.finalUs = a; m.finalThem = b; }
+    const { ev, notes } = evidenceFor(m, known);
+    if (!ev.length) return setMsg('There is no evidence yet. Run Scan match, the ball tracker, or one of the Listen buttons.');
+    cands = fuse(ev, { n: known });
+    picks = new Set(); cands.forEach((c, i) => { if (c.picked) picks.add(i); });
+    const names = { crowd: 'crowd noise', board: 'scoreboard', ball: 'ball', cheer: 'cheering', speech: 'speech' };
+    setMsg(`Used: ${Object.keys(notes).map(k => names[k] || k).join(', ')}.${known != null ? ` Kept the ${known} most likely, for a final score of ${a}–${b}.` : ' Without the final score it keeps only the strongest.'}`);
+    const rows = cands.slice().map((c, i) => [c, i]).sort((x, y) => (y[0].picked - x[0].picked) || (x[0].time - y[0].time));
+    $('#sfList').innerHTML = rows.map(([c, i]) => `<label class="cand big"><input type="checkbox" data-i="${i}" ${picks.has(i) ? 'checked' : ''}>
+      <b>${clock(c.time)}</b><span class="chips">${c.evidence.map(e => `<i class="chip">${esc(e.label)}</i>`).join('')}</span><em>${Math.round(c.score * 100)}%</em></label>`).join('');
+    $$('#sfList input').forEach(cb => cb.onchange = () => { cb.checked ? picks.add(+cb.dataset.i) : picks.delete(+cb.dataset.i); upd(); });
+    $('#sfGo').textContent = 'Work it out again'; upd();
+  }
+  const upd = () => { const b = $('#sfAdd'); b.hidden = false; b.disabled = !picks.size; b.textContent = picks.size ? `Add ${picks.size} goal${picks.size === 1 ? '' : 's'} to the match` : 'Tick the goals to add';
+    b.onclick = async () => {
+      if (!m.events) m.events = [];
+      if (!m.duration) { m.duration = (m.video && m.video.duration) || 0; m.half = m.halfTime || m.duration / 2; }
+      [...picks].sort((x, y) => cands[x].time - cands[y].time).forEach(i => addGoalAt(m, cands[i].time, cands[i].side));
+      await DB.saveMatch(m); scrim.remove(); finishEventEdit(m); toast('Added. Check each one, then tap who scored.'); go(`#/match/${m.id}/moments`);
+    }; };
+  render('');
+}
+
 // ------------------------------------------------------------ ball tracker (beta)
 const KEEP = 'pitchside-keep', MODEL_KEY = '/__pitchside_ball_model';
 async function saveBallModel(name, buffer) {
@@ -1912,6 +2336,7 @@ async function runBallScan(m) {
     });
     scrim.remove();
     if (discard) return;
+    if (res.rows.length >= 20) { m.ballTrack = { fps: S.ballFps, duration: res.duration, rows: res.rows.map(r => [+r[0].toFixed(2), +r[1].toFixed(4), +r[2].toFixed(4), +r[3].toFixed(2)]) }; await DB.saveMatch(m); }
     if (res.rows.length < 20) return toast('The ball was hardly seen, so this model may not suit this footage. Try Thorough, or a different model.');
     ballReview(m, res);
   } catch (err) {
@@ -1968,7 +2393,7 @@ function ballReview(m, res) {
   cv.onpointermove = e => { if (!drag) return; const p = pt(e); drag.z = [Math.min(drag.x0, p.x), Math.max(drag.x0, p.x), Math.min(drag.y0, p.y), Math.max(drag.y0, p.y)]; draw(); };
   cv.onpointerup = () => {
     if (!drag) return;
-    if (drag.z[1] - drag.z[0] > 0.01 && drag.z[3] - drag.z[2] > 0.01) { zones[drag.k] = drag.z; }
+    if (drag.z[1] - drag.z[0] > 0.01 && drag.z[3] - drag.z[2] > 0.01) { zones[drag.k] = drag.z; if (m.ballTrack) { m.ballTrack.zones = zones; DB.saveMatch(m); } }
     drag = null; armed = null; $$('.zbtns button').forEach(b => b.classList.remove('on')); recalc();
   };
   $$('.zbtns button').forEach(b => b.onclick = () => {
@@ -1980,7 +2405,7 @@ function ballReview(m, res) {
   $('#rvAdd').onclick = async () => {
     if (!m.events) m.events = [];
     if (!m.duration) { m.duration = res.duration || m.video.duration; m.half = m.halfTime || m.duration / 2; }
-    m.ballTrack = { fps: S.ballFps, duration: res.duration, rows: res.rows.map(r => [+r[0].toFixed(2), +r[1].toFixed(4), +r[2].toFixed(4), +r[3].toFixed(2)]) };
+    m.ballTrack = { fps: S.ballFps, duration: res.duration, zones, rows: res.rows.map(r => [+r[0].toFixed(2), +r[1].toFixed(4), +r[2].toFixed(4), +r[3].toFixed(2)]) };
     [...pick].sort((a, b) => cands[a].time - cands[b].time).forEach(i => addGoalAt(m, cands[i].time, null));
     await DB.saveMatch(m); close(); finishEventEdit(m);
     toast('Added. Now tap who scored on each goal.'); go(`#/match/${m.id}/moments`);
@@ -2102,11 +2527,13 @@ function momentsTab(m) {
       <button class="ghost" id="goalThem" ${has ? '' : 'disabled'}>Goal here: ${esc(m.them)}</button></div>
     ${highlightCards(m)}
     ${scoreCard(m)}
+    <div class="actions"><button class="ghost" id="smartOpen">Smart goal finder (combine all clues)</button></div>
     ${m.raw ? goalBox(m) : ''}
     ${m.raw ? `<div class="fld inline"><span>Sensitivity</span>${seg('sensSeg', [['fewer', 'Fewer'], ['normal', 'Normal'], ['more', 'More']], m.sens || 'normal')}</div>` : ''}
     <div id="momentList" class="moms"></div>`;
   renderMoments(m); updateGoalStatus(m); wireHighlightCards(m);
   const fg = $('#findGoals'); if (fg) fg.onclick = () => runFindGoals(m);
+  const so = $('#smartOpen'); if (so) so.onclick = () => smartFinder(m);
   const th = $('#teach'); if (th) th.onclick = () => teachFromMatch(m); updateTeachInfo(m);
   const us = $('#useScore'); if (us) us.onclick = () => {
     m.events = m.events.filter(e => !(e.guess && !e.side));

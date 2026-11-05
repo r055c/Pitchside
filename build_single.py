@@ -15,15 +15,18 @@ _s = re.sub(r"const CACHE = '[^']*';", "const CACHE = 'pitchside-" + SLUG + "';"
 open('sw.js', 'w', encoding='utf-8').write(_s)
 print("version:", STAMP)
 r=lambda p: open(p,encoding='utf-8').read()
-db=re.sub(r'^export ','',r('js/db.js'),flags=re.M)
-an=re.sub(r'^export ','',r('js/analysis.js'),flags=re.M)
-ex=re.sub(r'^export ','',r('js/export.js'),flags=re.M)
-ba=re.sub(r'^export ','',r('js/ball.js'),flags=re.M)
-app=re.sub(r"^import .*$\n",'',r('js/app.js'),flags=re.M)
-js=("const DB=(()=>{\n"+db+"\nreturn {allMatches,getMatch,saveMatch,deleteMatch,newId};})();\n"
-    "const {makeHighlightsVideo,pickMime}=(()=>{\n"+ex+"\nreturn {makeHighlightsVideo,pickMime};})();\n"
-    "const {loadBallSession,scanBall,hasWebGPU,cleanTrack,suggestZones,findCandidates}=(()=>{\n"+ba+"\nreturn {loadBallSession,scanBall,hasWebGPU,cleanTrack,suggestZones,findCandidates};})();\n"
-    "const {scanVideo,probeVideo,processSignals,findGoals,findScoreChanges,snapToRoar,trainGoalModel}=(()=>{\n"+an+"\nreturn {DEFAULTS,percentile,processSignals,probeVideo,scanVideo,findGoals,findScoreChanges,snapToRoar,trainGoalModel};})();\n"+app)
+def names(src):
+    out=[]
+    for m_ in re.finditer(r'^export\s+(?:async\s+)?(?:function|const|let)\s+([A-Za-z0-9_$]+)', src, flags=re.M): out.append(m_.group(1))
+    return out
+def wrap(path):
+    src=r(path); ns=names(src)
+    body=re.sub(r'^import .*$\n','',re.sub(r'^export ','',src,flags=re.M),flags=re.M)
+    return "const {"+",".join(ns)+"}=(()=>{\n"+body+"\nreturn {"+",".join(ns)+"};})();\n"
+# order matters: a module may only use modules above it
+js="const DB=(()=>{\n"+re.sub(r'^export ','',r('js/db.js'),flags=re.M)+"\nreturn {allMatches,getMatch,saveMatch,deleteMatch,newId};})();\n"
+js+="".join(wrap(p) for p in ['js/export.js','js/fuse.js','js/ball.js','js/audio.js','js/sound.js','js/speech.js','js/analysis.js'])
+js+=re.sub(r"^import .*$\n",'',r('js/app.js'),flags=re.M)
 js=js.replace("</script>","<\\/script>")
 h=r('index.html')
 h=re.sub(r'<link rel="manifest"[^>]*>\n?','',h)

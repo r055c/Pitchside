@@ -2,6 +2,10 @@ import * as DB from './db.js';
 import { scanVideo, probeVideo, processSignals, findGoals, findScoreChanges, snapToRoar, trainGoalModel } from './analysis.js';
 import { makeHighlightsVideo, pickMime } from './export.js';
 import { loadBallSession, scanBall, hasWebGPU, cleanTrack, suggestZones, findCandidates } from './ball.js';
+import { fuse, soundEvents, speechEvents, SOURCES } from './fuse.js';
+import { loadYamnet, scanSound, getYamnetBuffer, keepYamnet } from './sound.js';
+import { loadWhisper, scanSpeech } from './speech.js';
+import { audioSupported } from './audio.js';
 
 // ============================================================ helpers
 const $ = (s, r = document) => r.querySelector(s);
@@ -266,6 +270,9 @@ async function setupView(m) {
       <p>Optional. Mark where the two score numbers are and the scan will notice every time one changes. That gives you the goal times and who scored, automatically.</p>
       <p class="note" id="sbState">${m.scoreBoxes ? 'Score area set. It will be read during the scan.' : ''}</p>
       <button class="ghost wide" id="markScore" ${has ? '' : 'disabled'}>${m.scoreBoxes ? 'Change the score area' : 'Mark the score area'}</button></section>
+    <section class="card quiet" id="smartCard"><h3>Smart goal finder (beta)</h3>
+      <p>Combines every clue: the scoreboard, ball tracking, crowd noise, cheering and whistles, and anyone shouting &ldquo;goal&rdquo;. Tell it the final score and it keeps that many of the most likely goals.</p>
+      <button class="ghost wide" id="goSmart">Open the smart goal finder</button></section>
     <section class="card quiet" id="ballCard"><h3>Track the ball (beta)</h3>
       <p>Uses a football ball detector that runs in your browser to find the goals itself: the ball reaching a goal, then a kick-off from the centre spot. It is slow but needs no tagging. You need a ball model file (<code>.onnx</code>), loaded once.</p>
       <p class="note" id="ballState">${ballStateText()}</p>
@@ -289,6 +296,7 @@ async function setupView(m) {
   const bm = $('#ballModel'); if (bm) bm.onchange = e => chooseBallModel(m, e.target.files[0]);
   wireSeg('ballSeg', v => { S.ballFps = +v; ballEta(m); }); ballEta(m);
   const gbl = $('#goBall'); if (gbl) gbl.onclick = () => runBallScan(m);
+  const gsm = $('#goSmart'); if (gsm) gsm.onclick = () => smartFinder(m);
   const ms = $('#markScore'); if (ms) ms.onclick = () => markScoreArea(m, () => setupView(m));
   $('#skipScan').onclick = async () => { m.events = []; m.curves = null; m.raw = null; m.duration = m.video.duration; m.half = m.halfTime || m.duration / 2; await DB.saveMatch(m); go(`#/match/${m.id}/moments`); };
   $('#ifile').onchange = async e => {
@@ -655,6 +663,116 @@ async function runExport(m) {
   }
 }
 
+// ------------------------------------------------------------ smart goal finder
+S.yam = null;
+function evidenceFor(m, n) {
+  const ev = [], notes = {};
+  if (m.raw) {
+    const cs = findGoals(m.raw, m.duration, { n: Math.max(12, (n || 6) * 3), halfTime: m.halfTime, sampleFps: 2, model: loadModel() });
+    const top = Math.max(0.0001, ...cs.map(c => c.score));
+    cs.forEach(c => ev.push({ src: 'crowd', t: c.time, conf: 0.2 + 0.3 * (c.score / top) })); notes.crowd = cs.length;
+  }
+  if (m.scoreEvents && m.scoreEvents.length) { m.scoreEvents.forEach(e => ev.push({ src: 'board', t: e.time, conf: m.scoreNoisy ? 0.35 : 0.9, side: e.side })); notes.board = m.scoreEvents.length; }
+  if (m.ballTrack) {
+    const pts = cleanTrack(m.ballTrack.rows, m.ballTrack.duration || m.duration);
+    if (pts.length >= 20) {
+      const z = m.ballTrack.zones || suggestZones(pts);
+      const cs = findCandidates(pts, z, { sampleFps: m.ballTrack.fps || 2 });
+      cs.forEach(c => ev.push({ src: c.restart ? 'ball' : 'ballMaybe', t: c.time, conf: c.restart ? 0.65 : 0.25 })); notes.ball = cs.length;
+    }
+  }
+  if (m.sound) { const se = soundEvents(m.sound); ev.push(...se); notes.cheer = se.length; }
+  if (m.speech) { const sp = speechEvents(m.speech); ev.push(...sp); notes.speech = sp.length; }
+  return { ev, notes };
+}
+function smartFinder(m) {
+  if (!haveFile(m) && !m.raw && !m.scoreEvents && !m.ballTrack) return needVideo();
+  let ctrl = null, picks = new Set(), cands = [], busy = false;
+  const scrim = document.createElement('div'); scrim.className = 'scrim';
+  document.body.appendChild(scrim);
+  const status = (ok, text) => `<span class="${ok ? 'ok' : 'no'}">${ok ? '&#10003;' : '&ndash;'}</span> ${text}`;
+  let typed = (m.finalUs != null && m.finalThem != null) ? [String(m.finalUs), String(m.finalThem)] : ['', ''];
+  const render = (msg) => {
+    if ($('#sfUs')) typed = [$('#sfUs').value, $('#sfThem').value];   // keep what was typed across redraws
+    const score = typed;
+    scrim.innerHTML = `<div class="sheet wide" role="dialog" aria-label="Smart goal finder"><h4>Smart goal finder</h4>
+      <div class="fs"><label>${esc(m.us)}<input id="sfUs" type="number" inputmode="numeric" min="0" max="30" value="${score[0]}"></label>
+        <label>${esc(m.them)}<input id="sfThem" type="number" inputmode="numeric" min="0" max="30" value="${score[1]}"></label></div>
+      <p class="note">Final score (optional, but it makes the result much better).</p>
+      <ul class="evs">
+        <li>${status(!!m.raw, 'Crowd noise &mdash; ' + (m.raw ? 'from the match scan' : 'run <b>Scan match</b> on the setup screen first'))}</li>
+        <li>${status(!!(m.scoreEvents && m.scoreEvents.length), 'Scoreboard &mdash; ' + (m.scoreEvents ? m.scoreEvents.length + ' score changes' : 'not marked (optional)'))}</li>
+        <li>${status(!!m.ballTrack, 'Ball tracking &mdash; ' + (m.ballTrack ? 'done' : 'run it from the setup screen (optional)'))}</li>
+        <li>${status(!!m.sound, 'Cheering and whistles &mdash; ' + (m.sound ? 'done' : 'not run'))} <button class="ghost sm" id="sfSound" ${busy ? 'disabled' : ''}>${m.sound ? 'Redo' : 'Listen'}</button></li>
+        <li>${status(!!m.speech, 'Spoken &ldquo;goal&rdquo; &mdash; ' + (m.speech ? m.speech.hits.length + ' mentions in ' + m.speech.words + ' words heard' : 'not run (needs voices on the recording)'))} <button class="ghost sm" id="sfSpeech" ${busy ? 'disabled' : ''}>${m.speech ? 'Redo' : 'Listen'}</button></li>
+      </ul>
+      <p class="note" id="sfMsg">${msg || ''}</p>
+      <div id="sfList"></div>
+      <button class="primary wide" id="sfGo" ${busy ? 'disabled' : ''}>Find the goals</button>
+      <button class="primary wide" id="sfAdd" hidden></button>
+      <button class="cancel" id="sfClose">${busy ? 'Cancel' : 'Close'}</button></div>`;
+    $('#sfClose').onclick = () => { if (ctrl) ctrl.abort(); scrim.remove(); };
+    $('#sfSound').onclick = () => runSound(); $('#sfSpeech').onclick = () => runSpeech(); $('#sfGo').onclick = () => combine();
+  };
+  const setMsg = t => { const e = $('#sfMsg'); if (e) e.textContent = t; };
+  const needAudio = () => { if (!haveFile(m)) { toast('Attach the match video first'); return false; } if (!audioSupported()) { setMsg('This needs Chrome or Edge on a computer.'); return false; } return true; };
+  const wasLong = (p) => `${clock((p.seconds != null ? p.seconds : 0))} listened to`;
+  async function runSound(fileForModel) {
+    if (!needAudio()) return; busy = true; render('Starting…'); ctrl = new AbortController();
+    try {
+      if (!S.yam) {
+        let buf = fileForModel || await getYamnetBuffer(t => setMsg(t));
+        S.yam = await loadYamnet(buf, { onStatus: t => setMsg(t) });
+        if (fileForModel) await keepYamnet(fileForModel);
+      }
+      const r = await scanSound(S.file, S.yam, { signal: ctrl.signal, onProgress: p => setMsg(`Listening… ${Math.round(p.frac * 100)}% (${clock(p.seconds)} of the match)`) });
+      if (!ctrl.signal.aborted) { m.sound = { hop: r.hop, cheer: r.cheer, applause: r.applause, crowd: r.crowd, shout: r.shout, whistle: r.whistle, speech: r.speech }; await DB.saveMatch(m); }
+      busy = false; render(ctrl.signal.aborted ? 'Stopped.' : 'Done. Cheering and whistles recorded.');
+    } catch (err) {
+      busy = false; S.yam = null;
+      if ((err.message || '').startsWith('NEEDFILE')) {
+        render(err.message.replace('NEEDFILE: ', ''));
+        const sf = $('#sfSound'); sf.textContent = 'Choose yamnet.onnx';
+        sf.onclick = () => { const i = document.createElement('input'); i.type = 'file'; i.accept = '.onnx'; i.onchange = async () => { if (i.files[0]) runSound(await i.files[0].arrayBuffer()); }; i.click(); };
+      } else render(err.message || 'The sound scan failed');
+    }
+  }
+  async function runSpeech() {
+    if (!needAudio()) return; busy = true; render('Starting…'); ctrl = new AbortController();
+    try {
+      if (!S.asr) S.asr = await loadWhisper({ onStatus: t => setMsg(t), onProgress: f => setMsg(`Downloading the speech model… ${Math.round(f * 100)}%`) });
+      const r = await scanSpeech(S.file, S.asr, { signal: ctrl.signal, onProgress: p => setMsg(`Listening for words… ${Math.round(p.frac * 100)}% · ${p.hits} mention${p.hits === 1 ? '' : 's'} of goals so far`) });
+      if (!ctrl.signal.aborted) { m.speech = { words: r.words, hits: r.hits }; await DB.saveMatch(m); }
+      busy = false; render(ctrl.signal.aborted ? 'Stopped.' : (r.words < 30 ? 'Done, but hardly any speech was heard, so this clue will not help on this recording.' : 'Done.'));
+    } catch (err) { busy = false; S.asr = null; render(err.message || 'The speech scan failed'); }
+  }
+  function combine() {
+    const a = parseInt($('#sfUs').value, 10), b = parseInt($('#sfThem').value, 10);
+    const known = a >= 0 && b >= 0 ? a + b : null;
+    if (known === 0) return setMsg('0–0, so there are no goals to find.');
+    if (known != null) { m.finalUs = a; m.finalThem = b; }
+    const { ev, notes } = evidenceFor(m, known);
+    if (!ev.length) return setMsg('There is no evidence yet. Run Scan match, the ball tracker, or one of the Listen buttons.');
+    cands = fuse(ev, { n: known });
+    picks = new Set(); cands.forEach((c, i) => { if (c.picked) picks.add(i); });
+    const names = { crowd: 'crowd noise', board: 'scoreboard', ball: 'ball', cheer: 'cheering', speech: 'speech' };
+    setMsg(`Used: ${Object.keys(notes).map(k => names[k] || k).join(', ')}.${known != null ? ` Kept the ${known} most likely, for a final score of ${a}–${b}.` : ' Without the final score it keeps only the strongest.'}`);
+    const rows = cands.slice().map((c, i) => [c, i]).sort((x, y) => (y[0].picked - x[0].picked) || (x[0].time - y[0].time));
+    $('#sfList').innerHTML = rows.map(([c, i]) => `<label class="cand big"><input type="checkbox" data-i="${i}" ${picks.has(i) ? 'checked' : ''}>
+      <b>${clock(c.time)}</b><span class="chips">${c.evidence.map(e => `<i class="chip">${esc(e.label)}</i>`).join('')}</span><em>${Math.round(c.score * 100)}%</em></label>`).join('');
+    $$('#sfList input').forEach(cb => cb.onchange = () => { cb.checked ? picks.add(+cb.dataset.i) : picks.delete(+cb.dataset.i); upd(); });
+    $('#sfGo').textContent = 'Work it out again'; upd();
+  }
+  const upd = () => { const b = $('#sfAdd'); b.hidden = false; b.disabled = !picks.size; b.textContent = picks.size ? `Add ${picks.size} goal${picks.size === 1 ? '' : 's'} to the match` : 'Tick the goals to add';
+    b.onclick = async () => {
+      if (!m.events) m.events = [];
+      if (!m.duration) { m.duration = (m.video && m.video.duration) || 0; m.half = m.halfTime || m.duration / 2; }
+      [...picks].sort((x, y) => cands[x].time - cands[y].time).forEach(i => addGoalAt(m, cands[i].time, cands[i].side));
+      await DB.saveMatch(m); scrim.remove(); finishEventEdit(m); toast('Added. Check each one, then tap who scored.'); go(`#/match/${m.id}/moments`);
+    }; };
+  render('');
+}
+
 // ------------------------------------------------------------ ball tracker (beta)
 const KEEP = 'pitchside-keep', MODEL_KEY = '/__pitchside_ball_model';
 async function saveBallModel(name, buffer) {
@@ -716,6 +834,7 @@ async function runBallScan(m) {
     });
     scrim.remove();
     if (discard) return;
+    if (res.rows.length >= 20) { m.ballTrack = { fps: S.ballFps, duration: res.duration, rows: res.rows.map(r => [+r[0].toFixed(2), +r[1].toFixed(4), +r[2].toFixed(4), +r[3].toFixed(2)]) }; await DB.saveMatch(m); }
     if (res.rows.length < 20) return toast('The ball was hardly seen, so this model may not suit this footage. Try Thorough, or a different model.');
     ballReview(m, res);
   } catch (err) {
@@ -772,7 +891,7 @@ function ballReview(m, res) {
   cv.onpointermove = e => { if (!drag) return; const p = pt(e); drag.z = [Math.min(drag.x0, p.x), Math.max(drag.x0, p.x), Math.min(drag.y0, p.y), Math.max(drag.y0, p.y)]; draw(); };
   cv.onpointerup = () => {
     if (!drag) return;
-    if (drag.z[1] - drag.z[0] > 0.01 && drag.z[3] - drag.z[2] > 0.01) { zones[drag.k] = drag.z; }
+    if (drag.z[1] - drag.z[0] > 0.01 && drag.z[3] - drag.z[2] > 0.01) { zones[drag.k] = drag.z; if (m.ballTrack) { m.ballTrack.zones = zones; DB.saveMatch(m); } }
     drag = null; armed = null; $$('.zbtns button').forEach(b => b.classList.remove('on')); recalc();
   };
   $$('.zbtns button').forEach(b => b.onclick = () => {
@@ -784,7 +903,7 @@ function ballReview(m, res) {
   $('#rvAdd').onclick = async () => {
     if (!m.events) m.events = [];
     if (!m.duration) { m.duration = res.duration || m.video.duration; m.half = m.halfTime || m.duration / 2; }
-    m.ballTrack = { fps: S.ballFps, duration: res.duration, rows: res.rows.map(r => [+r[0].toFixed(2), +r[1].toFixed(4), +r[2].toFixed(4), +r[3].toFixed(2)]) };
+    m.ballTrack = { fps: S.ballFps, duration: res.duration, zones, rows: res.rows.map(r => [+r[0].toFixed(2), +r[1].toFixed(4), +r[2].toFixed(4), +r[3].toFixed(2)]) };
     [...pick].sort((a, b) => cands[a].time - cands[b].time).forEach(i => addGoalAt(m, cands[i].time, null));
     await DB.saveMatch(m); close(); finishEventEdit(m);
     toast('Added. Now tap who scored on each goal.'); go(`#/match/${m.id}/moments`);
@@ -906,11 +1025,13 @@ function momentsTab(m) {
       <button class="ghost" id="goalThem" ${has ? '' : 'disabled'}>Goal here: ${esc(m.them)}</button></div>
     ${highlightCards(m)}
     ${scoreCard(m)}
+    <div class="actions"><button class="ghost" id="smartOpen">Smart goal finder (combine all clues)</button></div>
     ${m.raw ? goalBox(m) : ''}
     ${m.raw ? `<div class="fld inline"><span>Sensitivity</span>${seg('sensSeg', [['fewer', 'Fewer'], ['normal', 'Normal'], ['more', 'More']], m.sens || 'normal')}</div>` : ''}
     <div id="momentList" class="moms"></div>`;
   renderMoments(m); updateGoalStatus(m); wireHighlightCards(m);
   const fg = $('#findGoals'); if (fg) fg.onclick = () => runFindGoals(m);
+  const so = $('#smartOpen'); if (so) so.onclick = () => smartFinder(m);
   const th = $('#teach'); if (th) th.onclick = () => teachFromMatch(m); updateTeachInfo(m);
   const us = $('#useScore'); if (us) us.onclick = () => {
     m.events = m.events.filter(e => !(e.guess && !e.side));

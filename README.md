@@ -42,3 +42,18 @@ Shots and saves with no kick-off after them are listed as "maybe".
 - The goal and centre-spot boxes are guessed from where the ball travels; drag new boxes if they are wrong.
 - `js/ball.js` has the logic. `colab/Pitchside_ball_finder.ipynb` runs the same idea on a free Colab GPU.
 - `js/vendor/ort/` is ONNX Runtime Web 1.22.0 (MIT licence).
+
+
+## Smart goal finder (beta)
+
+Combines every clue into one ranked list and, when you give the final score, keeps exactly that many goals.
+Clues: crowd noise (the match scan), the scoreboard reader, the ball tracker, **cheering and whistles**
+(Google YAMNet sound classifier, `js/sound.js`) and **spoken "goal"** (Whisper tiny English, `js/speech.js`).
+
+- Open it from the setup screen or the Moments tab. Every clue is optional; more clues means better answers.
+- `js/audio.js` reads the match sound in about a minute with the browser's own decoder (Chrome/Edge, `.mp4` or `.mov`).
+- The two sound models download once from Hugging Face by the browser (YAMNet is kept in the Cache API; Whisper is cached
+  by the library). If Hugging Face is blocked, choose `yamnet.onnx` yourself:
+  https://huggingface.co/audiomagic/yamnet-onnx (Apache-2.0).
+- `js/fuse.js` is the combining logic. Hosted version only: `js/vendor/` holds ONNX Runtime Web, mp4box.js (BSD-3) and
+  Transformers.js (Apache-2.0) so nothing is fetched from a CDN.
