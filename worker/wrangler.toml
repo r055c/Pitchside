@@ -1,0 +1,9 @@
+name = "pitchside-gemini"
+main = "gemini-proxy.js"
+compatibility_date = "2025-01-01"
+
+# Put the Worker on the same site as the app (replace the domain), then:
+#   npx wrangler secret put GEMINI_API_KEY
+#   npx wrangler secret put PASSCODE        (optional)
+#   npx wrangler deploy
+routes = [{ pattern = "YOUR-DOMAIN.example/api/gemini/*", zone_name = "YOUR-DOMAIN.example" }]

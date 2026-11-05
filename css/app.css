@@ -216,3 +216,7 @@ a.dl{display:flex;align-items:center;justify-content:center;gap:8px;text-decorat
 .gem .chk span{flex:1;min-width:0}
 .gem .gbtns{display:flex;gap:8px;flex-wrap:wrap}.gem .gbtns button{flex:1;min-height:44px}
 .gem small{font-weight:400;opacity:.7}
+
+.gemw{margin:0;padding:8px 10px 8px 26px;font-size:13px;line-height:1.4;background:rgba(241,181,28,.18);border-radius:8px}
+.chk.mom{display:flex;gap:10px;align-items:flex-start;font-size:13px;padding:10px 4px}
+.chk.mom input{width:22px;min-width:22px;height:22px;min-height:22px;padding:0;flex:none;accent-color:var(--ink)}

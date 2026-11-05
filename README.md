@@ -59,4 +59,6 @@ Clues: crowd noise (the match scan), the scoreboard reader, the ball tracker, **
   Transformers.js (Apache-2.0) so nothing is fetched from a CDN.
 
 ## Ask Gemini (beta)
+(Updated: Gemini now also reads the score after each goal, re-checks the stretches where the score says a goal is missing, takes a closer look at each goal for the exact second, flags anything that disagrees with the final score, and can optionally list shots, saves, corners and fouls. For hosting with the key on the server, see `worker/README.md`.)
+
 In the Smart goal finder, paste your own free key from https://aistudio.google.com/apikey. The browser uploads the match video straight to Google (File API), asks Gemini for the goals in 15-minute parts, then deletes the upload. The answer joins the other clues. The key is only kept on the device if you tick "Remember". Free-tier limits may slow it down; it waits and retries.

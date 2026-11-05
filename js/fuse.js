@@ -5,6 +5,7 @@
 export const SOURCES = {
   ball: { label: 'Ball in goal, then kick-off', rank: 0 },
   board: { label: 'Scoreboard changed', rank: 1 },
+  geminiFine: { label: 'Gemini checked the exact moment', rank: 1.5 },
   ballMaybe: { label: 'Ball reached the goal', rank: 2 },
   speech: { label: 'Someone said "goal"', rank: 3 },
   cheer: { label: 'Cheering', rank: 4 },
@@ -75,7 +76,11 @@ export function speechEvents(speech) {
 // ---- evidence from Gemini: { goals: [{ t, side, conf, note }] } ----
 export function geminiEvents(g) {
   if (!g || !g.goals) return [];
-  return g.goals.map(x => ({ src: 'gemini', t: x.t, conf: 0.5 + 0.2 * (x.conf == null ? 0.5 : x.conf), side: x.side || undefined, note: x.note ? 'Gemini: ' + x.note : undefined }));
+  return g.goals.map(x => {
+    const c = x.conf == null ? 0.5 : x.conf;
+    const o = x.unsure ? { src: 'gemini', conf: 0.3 } : x.fine ? { src: 'geminiFine', conf: Math.min(0.9, 0.75 + 0.15 * c) } : { src: 'gemini', conf: 0.5 + 0.2 * c };
+    return { ...o, t: x.t, side: x.side || undefined, note: x.note ? 'Gemini: ' + x.note : undefined };
+  });
 }
 
 export const GOAL_WORDS = [/\bgoal+s?\b/i, /\bscor(e|ed|es)\b/i, /\bget in\b/i, /\bwhat a (strike|finish|hit|goal)\b/i, /\bin the back of the net\b/i, /\bone[- ]nil\b|\btwo[- ]nil\b/i];

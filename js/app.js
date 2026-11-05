@@ -3,7 +3,7 @@ import { scanVideo, probeVideo, processSignals, findGoals, findScoreChanges, sna
 import { makeHighlightsVideo, pickMime } from './export.js';
 import { loadBallSession, scanBall, hasWebGPU, cleanTrack, suggestZones, findCandidates } from './ball.js';
 import { fuse, soundEvents, speechEvents, geminiEvents, SOURCES } from './fuse.js';
-import { listModels, uploadVideo, deleteUpload, askGoals } from './gemini.js';
+import { listModels, uploadVideo, deleteUpload, geminiGoals, geminiMoments } from './gemini.js';
 import { loadYamnet, scanSound, getYamnetBuffer, keepYamnet } from './sound.js';
 import { loadWhisper, scanSpeech } from './speech.js';
 import { audioSupported } from './audio.js';
@@ -539,6 +539,14 @@ function addGoalAt(m, t, side) {
   const e = { id: 0, time: t, start: Math.max(0, t - pre), end: Math.min(dur, t + post), score: null, label: 'Goal', type: 'goal', side: side || null, manual: true };
   m.events.push(e); return e;
 }
+function addMomentsFrom(m, list) {
+  const dur = m.duration || 1e9;
+  for (const x of list) {
+    if (!TYPES[x.type] || !x.side) continue;
+    if (m.events.some(e => e.type !== 'skip' && Math.abs(e.time - x.t) < 6 && (e.type === x.type || e.type === 'goal'))) continue;
+    m.events.push({ id: 0, time: x.t, start: Math.max(0, x.t - 5), end: Math.min(dur, x.t + 8), score: null, label: TYPES[x.type].label, type: x.type, side: x.side, manual: false, fromGemini: true });
+  }
+}
 function finishEventEdit(m) {
   m.events.sort((a, b) => a.time - b.time); m.events.forEach((e, i) => e.id = i + 1);
   DB.saveMatch(m); renderMoments(m); updateGoalStatus(m); updateVidInfo(m);
@@ -687,7 +695,11 @@ function evidenceFor(m, n) {
   if (m.gemini) { const ge = geminiEvents(m.gemini); ev.push(...ge); notes.gemini = ge.length; }
   return { ev, notes };
 }
-const G = { key: lsGet('ps_gemini_key', ''), rem: !!lsGet('ps_gemini_key', ''), ok: false, models: null, model: '' };
+const G = { key: lsGet('ps_gemini_key', ''), pass: lsGet('ps_gemini_pass', ''), rem: !!(lsGet('ps_gemini_key', '') || lsGet('ps_gemini_pass', '')), ok: false, extra: false, models: null, model: '' };
+// On a host with the Cloudflare Worker (worker/gemini-proxy.js) set <meta name="pitchside-gemini-proxy" content="/api/gemini"> in index.html:
+// the key then stays on the server and people only enter an access code (or nothing).
+const GPROXY = ((document.querySelector('meta[name="pitchside-gemini-proxy"]') || {}).content || '').trim();
+const gAuth = () => (GPROXY ? { proxy: GPROXY, pass: G.pass } : G.key);
 function smartFinder(m) {
   if (!haveFile(m) && !m.raw && !m.scoreEvents && !m.ballTrack) return needVideo();
   let ctrl = null, picks = new Set(), cands = [], busy = false;
@@ -711,13 +723,15 @@ function smartFinder(m) {
         <li>${status(!!m.speech, 'Spoken &ldquo;goal&rdquo; &mdash; ' + (m.speech ? m.speech.hits.length + ' mentions in ' + m.speech.words + ' words heard' : 'not run (needs voices on the recording)'))} <button class="ghost sm" id="sfSpeech" ${busy ? 'disabled' : ''}>${m.speech ? 'Redo' : 'Listen'}</button></li>
       </ul>
       <div class="gem">
-        <b>Ask Gemini <small>(watches the video &mdash; needs your own free key)</small></b>
-        <p class="note">${m.gemini ? `Done: Gemini found ${m.gemini.goals.length} goal${m.gemini.goals.length === 1 ? '' : 's'} (${esc(m.gemini.model)}).` : 'Gemini is Google&rsquo;s AI. It watches the whole match and lists the goals. Get a free key at <a href="https://aistudio.google.com/apikey" target="_blank" rel="noopener">aistudio.google.com/apikey</a>.'}</p>
-        <input id="gKey" type="password" autocomplete="off" spellcheck="false" placeholder="Paste your Gemini key" value="${esc(G.key)}">
+        <b>Ask Gemini <small>(watches the video${GPROXY ? '' : ' &mdash; needs your own free key'})</small></b>
+        <p class="note">${m.gemini ? `Done: Gemini found ${m.gemini.goals.length} goal${m.gemini.goals.length === 1 ? '' : 's'} (${esc(m.gemini.model)}).` : `Gemini is Google&rsquo;s AI. It watches the whole match, lists the goals, then takes a closer look at each one. ${GPROXY ? '' : 'Get a free key at <a href="https://aistudio.google.com/apikey" target="_blank" rel="noopener">aistudio.google.com/apikey</a>.'}`}</p>
+        ${m.gemini && m.gemini.warnings && m.gemini.warnings.length ? `<ul class="gemw">${m.gemini.warnings.map(w => `<li>${esc(w)}</li>`).join('')}</ul>` : ''}
+        <input id="gKey" type="password" autocomplete="off" spellcheck="false" placeholder="${GPROXY ? 'Access code (if you were given one)' : 'Paste your Gemini key'}" value="${esc(GPROXY ? G.pass : G.key)}">
         ${G.models ? `<select id="gModel">${G.models.map(x => `<option value="${esc(x.name)}" ${x.name === G.model ? 'selected' : ''}>${esc(x.name)}</option>`).join('')}</select>` : ''}
         <label class="chk"><input type="checkbox" id="gOk" ${G.ok ? 'checked' : ''}><span>I&rsquo;m happy for this video to be uploaded to Google with my key. (Google may use free-tier uploads to improve its products, so avoid footage you should not share, such as other people&rsquo;s children.)</span></label>
-        <label class="chk"><input type="checkbox" id="gRem" ${G.rem ? 'checked' : ''}><span>Remember the key on this device</span></label>
-        <div class="gbtns"><button class="ghost" id="sfGem" ${busy ? 'disabled' : ''}>${m.gemini ? 'Ask again' : 'Ask Gemini'}</button><button class="ghost" id="gForget" ${G.key && !busy ? '' : 'hidden'}>Forget key</button></div>
+        <label class="chk"><input type="checkbox" id="gExtra" ${G.extra ? 'checked' : ''}><span>Also look for shots, saves, corners and fouls (slower, and they are guesses to check)</span></label>
+        <label class="chk"><input type="checkbox" id="gRem" ${G.rem ? 'checked' : ''}><span>Remember ${GPROXY ? 'the access code' : 'the key'} on this device</span></label>
+        <div class="gbtns"><button class="ghost" id="sfGem" ${busy ? 'disabled' : ''}>${m.gemini ? 'Ask again' : 'Ask Gemini'}</button><button class="ghost" id="gForget" ${(GPROXY ? G.pass : G.key) && !busy ? '' : 'hidden'}>Forget ${GPROXY ? 'code' : 'key'}</button></div>
       </div>
       <p class="note" id="sfMsg">${msg || ''}</p>
       <div id="sfList"></div>
@@ -726,9 +740,9 @@ function smartFinder(m) {
       <button class="cancel" id="sfClose">${busy ? 'Cancel' : 'Close'}</button></div>`;
     $('#sfClose').onclick = () => { if (ctrl) ctrl.abort(); scrim.remove(); };
     $('#sfSound').onclick = () => runSound(); $('#sfSpeech').onclick = () => runSpeech(); $('#sfGo').onclick = () => combine();
-    $('#sfGem').onclick = () => runGemini(); $('#gForget').onclick = () => { G.key = ''; G.models = null; G.rem = false; lsSet('ps_gemini_key', ''); render('Key forgotten.'); };
+    $('#sfGem').onclick = () => runGemini(); $('#gForget').onclick = () => { G.key = ''; G.pass = ''; G.models = null; G.rem = false; lsSet('ps_gemini_key', ''); lsSet('ps_gemini_pass', ''); render('Forgotten.'); };
   };
-  const readG = () => { if ($('#gKey')) { G.key = $('#gKey').value.trim(); G.ok = $('#gOk').checked; G.rem = $('#gRem').checked; if ($('#gModel')) G.model = $('#gModel').value; } };
+  const readG = () => { if ($('#gKey')) { if (GPROXY) G.pass = $('#gKey').value.trim(); else G.key = $('#gKey').value.trim(); G.ok = $('#gOk').checked; G.extra = $('#gExtra').checked; G.rem = $('#gRem').checked; if ($('#gModel')) G.model = $('#gModel').value; } };
   const setMsg = t => { const e = $('#sfMsg'); if (e) e.textContent = t; };
   const needAudio = () => { if (!haveFile(m)) { toast('Attach the match video first'); return false; } if (!audioSupported()) { setMsg('This needs Chrome or Edge on a computer.'); return false; } return true; };
   const wasLong = (p) => `${clock((p.seconds != null ? p.seconds : 0))} listened to`;
@@ -764,26 +778,31 @@ function smartFinder(m) {
   async function runGemini() {
     readG();
     if (!haveFile(m)) return toast('Attach the match video first');
-    if (!G.key) return setMsg('Paste your Gemini key first.');
+    if (!GPROXY && !G.key) return setMsg('Paste your Gemini key first.');
     if (!G.ok) return setMsg('Tick the box to say you are happy for the video to be uploaded to Google.');
     let dur = m.duration || (m.video && m.video.duration) || 0;
     if (!dur) { try { dur = (await probeVideo(S.file)).duration; } catch (_) {} }
     if (!dur || !isFinite(dur)) return setMsg('I could not work out how long the video is.');
-    busy = true; render('Checking the key\u2026'); ctrl = new AbortController(); let up = null;
+    const fa = parseInt($('#sfUs').value, 10), fb = parseInt($('#sfThem').value, 10), haveFinal = fa >= 0 && fb >= 0;
+    busy = true; render('Checking access\u2026'); ctrl = new AbortController(); let up = null; const auth = gAuth();
     try {
-      if (!G.models) { G.models = await listModels(G.key, { signal: ctrl.signal }); }
-      if (!G.models.some(x => x.name === G.model)) G.model = lsGet('ps_gemini_model', '') && G.models.some(x => x.name === lsGet('ps_gemini_model', '')) ? lsGet('ps_gemini_model', '') : G.models[0].name;
-      lsSet('ps_gemini_key', G.rem ? G.key : ''); lsSet('ps_gemini_model', G.model);
+      if (!G.models) { G.models = await listModels(auth, { signal: ctrl.signal }); }
+      const saved = lsGet('ps_gemini_model', '');
+      if (!G.models.some(x => x.name === G.model)) G.model = saved && G.models.some(x => x.name === saved) ? saved : G.models[0].name;
+      lsSet('ps_gemini_key', G.rem && !GPROXY ? G.key : ''); lsSet('ps_gemini_pass', G.rem && GPROXY ? G.pass : ''); lsSet('ps_gemini_model', G.model);
       setMsg('Uploading the video to Google\u2026 0%');
-      up = await uploadVideo(G.key, S.file, { signal: ctrl.signal, onProgress: f => setMsg(`Uploading the video to Google\u2026 ${Math.round(f * 100)}% (a 200 MB match can take several minutes)`) });
-      const r = await askGoals(G.key, G.model, up, { us: m.us, them: m.them, duration: dur, signal: ctrl.signal, onProgress: p => setMsg(p.text) });
-      m.gemini = { model: G.model, at: Date.now(), goals: r.goals.map(g => ({ t: g.t, side: sideFromText(m, g.team), conf: g.conf, note: g.note })) };
+      up = await uploadVideo(auth, S.file, { signal: ctrl.signal, onProgress: f => setMsg(`Uploading the video to Google\u2026 ${Math.round(f * 100)}% (a 200 MB match can take several minutes)`) });
+      const sideOf = t => sideFromText(m, t);
+      const r = await geminiGoals(auth, G.model, up, { us: m.us, them: m.them, duration: dur, finalUs: haveFinal ? fa : null, finalThem: haveFinal ? fb : null, sideOf, signal: ctrl.signal, onProgress: t => setMsg(t) });
+      let moments = [];
+      if (G.extra) moments = await geminiMoments(auth, G.model, up, { us: m.us, them: m.them, duration: dur, sideOf, signal: ctrl.signal, onProgress: t => setMsg(t) });
+      m.gemini = { model: G.model, at: Date.now(), goals: r.goals.map(g => ({ t: g.t, side: g.side, conf: g.conf, note: g.note, fine: !!g.fine, unsure: !!g.unsure, gap: !!g.gap })), warnings: r.warnings, moments: moments.filter(x => x.side) };
       await DB.saveMatch(m);
-      busy = false; render(`Done. Gemini listed ${r.goals.length} goal${r.goals.length === 1 ? '' : 's'}: ${r.goals.map(g => clock(g.t)).join(', ') || 'none'}. Now press Find the goals.`);
+      busy = false; render(`Done. Gemini listed ${r.goals.length} goal${r.goals.length === 1 ? '' : 's'}: ${r.goals.map(g => clock(g.t) + (g.fine ? '' : '?')).join(', ') || 'none'}${moments.length ? `, plus ${moments.length} other moments` : ''}. Now press Find the goals.`);
     } catch (err) {
       busy = false; if (err.status === 400 || err.status === 401 || err.status === 403) G.models = null;
       render(err.message || 'Gemini did not work');
-    } finally { if (up) deleteUpload(G.key, up.name); }
+    } finally { if (up) deleteUpload(auth, up.name); }
   }
   function combine() {
     const a = parseInt($('#sfUs').value, 10), b = parseInt($('#sfThem').value, 10);
@@ -800,6 +819,8 @@ function smartFinder(m) {
     $('#sfList').innerHTML = rows.map(([c, i]) => `<label class="cand big"><input type="checkbox" data-i="${i}" ${picks.has(i) ? 'checked' : ''}>
       <b>${clock(c.time)}</b><span class="chips">${c.evidence.map(e => `<i class="chip">${esc(e.label)}</i>`).join('')}</span><em>${Math.round(c.score * 100)}%</em></label>`).join('');
     $$('#sfList input').forEach(cb => cb.onchange = () => { cb.checked ? picks.add(+cb.dataset.i) : picks.delete(+cb.dataset.i); upd(); });
+    const nm = m.gemini && m.gemini.moments ? m.gemini.moments.length : 0;
+    if (nm) $('#sfList').insertAdjacentHTML('beforeend', `<label class="chk mom"><input type="checkbox" id="sfMoms" checked><span>Also add the ${nm} shots, saves, corners and fouls Gemini found (guesses, so check them)</span></label>`);
     $('#sfGo').textContent = 'Work it out again'; upd();
   }
   const upd = () => { const b = $('#sfAdd'); b.hidden = false; b.disabled = !picks.size; b.textContent = picks.size ? `Add ${picks.size} goal${picks.size === 1 ? '' : 's'} to the match` : 'Tick the goals to add';
@@ -807,6 +828,7 @@ function smartFinder(m) {
       if (!m.events) m.events = [];
       if (!m.duration) { m.duration = (m.video && m.video.duration) || 0; m.half = m.halfTime || m.duration / 2; }
       [...picks].sort((x, y) => cands[x].time - cands[y].time).forEach(i => addGoalAt(m, cands[i].time, cands[i].side));
+      const mo = $('#sfMoms'); if (mo && mo.checked && m.gemini && m.gemini.moments) addMomentsFrom(m, m.gemini.moments);
       await DB.saveMatch(m); scrim.remove(); finishEventEdit(m); toast('Added. Check each one, then tap who scored.'); go(`#/match/${m.id}/moments`);
     }; };
   render('');
