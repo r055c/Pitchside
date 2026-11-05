@@ -2,7 +2,8 @@ import * as DB from './db.js';
 import { scanVideo, probeVideo, processSignals, findGoals, findScoreChanges, snapToRoar, trainGoalModel } from './analysis.js';
 import { makeHighlightsVideo, pickMime } from './export.js';
 import { loadBallSession, scanBall, hasWebGPU, cleanTrack, suggestZones, findCandidates } from './ball.js';
-import { fuse, soundEvents, speechEvents, SOURCES } from './fuse.js';
+import { fuse, soundEvents, speechEvents, geminiEvents, SOURCES } from './fuse.js';
+import { listModels, uploadVideo, deleteUpload, askGoals } from './gemini.js';
 import { loadYamnet, scanSound, getYamnetBuffer, keepYamnet } from './sound.js';
 import { loadWhisper, scanSpeech } from './speech.js';
 import { audioSupported } from './audio.js';
@@ -683,8 +684,10 @@ function evidenceFor(m, n) {
   }
   if (m.sound) { const se = soundEvents(m.sound); ev.push(...se); notes.cheer = se.length; }
   if (m.speech) { const sp = speechEvents(m.speech); ev.push(...sp); notes.speech = sp.length; }
+  if (m.gemini) { const ge = geminiEvents(m.gemini); ev.push(...ge); notes.gemini = ge.length; }
   return { ev, notes };
 }
+const G = { key: lsGet('ps_gemini_key', ''), rem: !!lsGet('ps_gemini_key', ''), ok: false, models: null, model: '' };
 function smartFinder(m) {
   if (!haveFile(m) && !m.raw && !m.scoreEvents && !m.ballTrack) return needVideo();
   let ctrl = null, picks = new Set(), cands = [], busy = false;
@@ -694,6 +697,7 @@ function smartFinder(m) {
   let typed = (m.finalUs != null && m.finalThem != null) ? [String(m.finalUs), String(m.finalThem)] : ['', ''];
   const render = (msg) => {
     if ($('#sfUs')) typed = [$('#sfUs').value, $('#sfThem').value];   // keep what was typed across redraws
+    readG();
     const score = typed;
     scrim.innerHTML = `<div class="sheet wide" role="dialog" aria-label="Smart goal finder"><h4>Smart goal finder</h4>
       <div class="fs"><label>${esc(m.us)}<input id="sfUs" type="number" inputmode="numeric" min="0" max="30" value="${score[0]}"></label>
@@ -706,6 +710,15 @@ function smartFinder(m) {
         <li>${status(!!m.sound, 'Cheering and whistles &mdash; ' + (m.sound ? 'done' : 'not run'))} <button class="ghost sm" id="sfSound" ${busy ? 'disabled' : ''}>${m.sound ? 'Redo' : 'Listen'}</button></li>
         <li>${status(!!m.speech, 'Spoken &ldquo;goal&rdquo; &mdash; ' + (m.speech ? m.speech.hits.length + ' mentions in ' + m.speech.words + ' words heard' : 'not run (needs voices on the recording)'))} <button class="ghost sm" id="sfSpeech" ${busy ? 'disabled' : ''}>${m.speech ? 'Redo' : 'Listen'}</button></li>
       </ul>
+      <div class="gem">
+        <b>Ask Gemini <small>(watches the video &mdash; needs your own free key)</small></b>
+        <p class="note">${m.gemini ? `Done: Gemini found ${m.gemini.goals.length} goal${m.gemini.goals.length === 1 ? '' : 's'} (${esc(m.gemini.model)}).` : 'Gemini is Google&rsquo;s AI. It watches the whole match and lists the goals. Get a free key at <a href="https://aistudio.google.com/apikey" target="_blank" rel="noopener">aistudio.google.com/apikey</a>.'}</p>
+        <input id="gKey" type="password" autocomplete="off" spellcheck="false" placeholder="Paste your Gemini key" value="${esc(G.key)}">
+        ${G.models ? `<select id="gModel">${G.models.map(x => `<option value="${esc(x.name)}" ${x.name === G.model ? 'selected' : ''}>${esc(x.name)}</option>`).join('')}</select>` : ''}
+        <label class="chk"><input type="checkbox" id="gOk" ${G.ok ? 'checked' : ''}> I&rsquo;m happy for this video to be uploaded to Google with my key. (Google may use free-tier uploads to improve its products, so avoid footage you should not share, such as other people&rsquo;s children.)</label>
+        <label class="chk"><input type="checkbox" id="gRem" ${G.rem ? 'checked' : ''}> Remember the key on this device</label>
+        <button class="ghost sm" id="sfGem" ${busy ? 'disabled' : ''}>${m.gemini ? 'Ask again' : 'Ask Gemini'}</button> <button class="ghost sm" id="gForget" ${G.key ? '' : 'hidden'}>Forget key</button>
+      </div>
       <p class="note" id="sfMsg">${msg || ''}</p>
       <div id="sfList"></div>
       <button class="primary wide" id="sfGo" ${busy ? 'disabled' : ''}>Find the goals</button>
@@ -713,7 +726,9 @@ function smartFinder(m) {
       <button class="cancel" id="sfClose">${busy ? 'Cancel' : 'Close'}</button></div>`;
     $('#sfClose').onclick = () => { if (ctrl) ctrl.abort(); scrim.remove(); };
     $('#sfSound').onclick = () => runSound(); $('#sfSpeech').onclick = () => runSpeech(); $('#sfGo').onclick = () => combine();
+    $('#sfGem').onclick = () => runGemini(); $('#gForget').onclick = () => { G.key = ''; G.models = null; G.rem = false; lsSet('ps_gemini_key', ''); render('Key forgotten.'); };
   };
+  const readG = () => { if ($('#gKey')) { G.key = $('#gKey').value.trim(); G.ok = $('#gOk').checked; G.rem = $('#gRem').checked; if ($('#gModel')) G.model = $('#gModel').value; } };
   const setMsg = t => { const e = $('#sfMsg'); if (e) e.textContent = t; };
   const needAudio = () => { if (!haveFile(m)) { toast('Attach the match video first'); return false; } if (!audioSupported()) { setMsg('This needs Chrome or Edge on a computer.'); return false; } return true; };
   const wasLong = (p) => `${clock((p.seconds != null ? p.seconds : 0))} listened to`;
@@ -746,6 +761,30 @@ function smartFinder(m) {
       busy = false; render(ctrl.signal.aborted ? 'Stopped.' : (r.words < 30 ? 'Done, but hardly any speech was heard, so this clue will not help on this recording.' : 'Done.'));
     } catch (err) { busy = false; S.asr = null; render(err.message || 'The speech scan failed'); }
   }
+  async function runGemini() {
+    readG();
+    if (!haveFile(m)) return toast('Attach the match video first');
+    if (!G.key) return setMsg('Paste your Gemini key first.');
+    if (!G.ok) return setMsg('Tick the box to say you are happy for the video to be uploaded to Google.');
+    let dur = m.duration || (m.video && m.video.duration) || 0;
+    if (!dur) { try { dur = (await probeVideo(S.file)).duration; } catch (_) {} }
+    if (!dur || !isFinite(dur)) return setMsg('I could not work out how long the video is.');
+    busy = true; render('Checking the key\u2026'); ctrl = new AbortController(); let up = null;
+    try {
+      if (!G.models) { G.models = await listModels(G.key, { signal: ctrl.signal }); }
+      if (!G.models.some(x => x.name === G.model)) G.model = lsGet('ps_gemini_model', '') && G.models.some(x => x.name === lsGet('ps_gemini_model', '')) ? lsGet('ps_gemini_model', '') : G.models[0].name;
+      lsSet('ps_gemini_key', G.rem ? G.key : ''); lsSet('ps_gemini_model', G.model);
+      setMsg('Uploading the video to Google\u2026 0%');
+      up = await uploadVideo(G.key, S.file, { signal: ctrl.signal, onProgress: f => setMsg(`Uploading the video to Google\u2026 ${Math.round(f * 100)}% (a 200 MB match can take several minutes)`) });
+      const r = await askGoals(G.key, G.model, up, { us: m.us, them: m.them, duration: dur, signal: ctrl.signal, onProgress: p => setMsg(p.text) });
+      m.gemini = { model: G.model, at: Date.now(), goals: r.goals.map(g => ({ t: g.t, side: sideFromText(m, g.team), conf: g.conf, note: g.note })) };
+      await DB.saveMatch(m);
+      busy = false; render(`Done. Gemini listed ${r.goals.length} goal${r.goals.length === 1 ? '' : 's'}: ${r.goals.map(g => clock(g.t)).join(', ') || 'none'}. Now press Find the goals.`);
+    } catch (err) {
+      busy = false; if (err.status === 400 || err.status === 401 || err.status === 403) G.models = null;
+      render(err.message || 'Gemini did not work');
+    } finally { if (up) deleteUpload(G.key, up.name); }
+  }
   function combine() {
     const a = parseInt($('#sfUs').value, 10), b = parseInt($('#sfThem').value, 10);
     const known = a >= 0 && b >= 0 ? a + b : null;
@@ -755,7 +794,7 @@ function smartFinder(m) {
     if (!ev.length) return setMsg('There is no evidence yet. Run Scan match, the ball tracker, or one of the Listen buttons.');
     cands = fuse(ev, { n: known });
     picks = new Set(); cands.forEach((c, i) => { if (c.picked) picks.add(i); });
-    const names = { crowd: 'crowd noise', board: 'scoreboard', ball: 'ball', cheer: 'cheering', speech: 'speech' };
+    const names = { crowd: 'crowd noise', board: 'scoreboard', ball: 'ball', cheer: 'cheering', speech: 'speech', gemini: 'Gemini' };
     setMsg(`Used: ${Object.keys(notes).map(k => names[k] || k).join(', ')}.${known != null ? ` Kept the ${known} most likely, for a final score of ${a}–${b}.` : ' Without the final score it keeps only the strongest.'}`);
     const rows = cands.slice().map((c, i) => [c, i]).sort((x, y) => (y[0].picked - x[0].picked) || (x[0].time - y[0].time));
     $('#sfList').innerHTML = rows.map(([c, i]) => `<label class="cand big"><input type="checkbox" data-i="${i}" ${picks.has(i) ? 'checked' : ''}>

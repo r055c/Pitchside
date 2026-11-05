@@ -57,3 +57,6 @@ Clues: crowd noise (the match scan), the scoreboard reader, the ball tracker, **
   https://huggingface.co/audiomagic/yamnet-onnx (Apache-2.0).
 - `js/fuse.js` is the combining logic. Hosted version only: `js/vendor/` holds ONNX Runtime Web, mp4box.js (BSD-3) and
   Transformers.js (Apache-2.0) so nothing is fetched from a CDN.
+
+## Ask Gemini (beta)
+In the Smart goal finder, paste your own free key from https://aistudio.google.com/apikey. The browser uploads the match video straight to Google (File API), asks Gemini for the goals in 15-minute parts, then deletes the upload. The answer joins the other clues. The key is only kept on the device if you tick "Remember". Free-tier limits may slow it down; it waits and retries.

@@ -9,6 +9,7 @@ export const SOURCES = {
   speech: { label: 'Someone said "goal"', rank: 3 },
   cheer: { label: 'Cheering', rank: 4 },
   crowd: { label: 'Crowd roar', rank: 5 },
+  gemini: { label: 'Gemini saw a goal', rank: 6 },   // watches the video, but its times are only roughly right
 };
 
 // events: [{ src, t, conf (0-1), side?, note? }]. Returns candidates sorted by time:
@@ -69,6 +70,12 @@ export function soundEvents(sound) {
 export function speechEvents(speech) {
   if (!speech || !speech.hits) return [];
   return speech.hits.map(h => ({ src: 'speech', t: Math.max(0, h.t - 2), conf: h.strong ? 0.45 : 0.2, note: `Heard: "${String(h.text).slice(0, 40)}"` }));
+}
+
+// ---- evidence from Gemini: { goals: [{ t, side, conf, note }] } ----
+export function geminiEvents(g) {
+  if (!g || !g.goals) return [];
+  return g.goals.map(x => ({ src: 'gemini', t: x.t, conf: 0.5 + 0.2 * (x.conf == null ? 0.5 : x.conf), side: x.side || undefined, note: x.note ? 'Gemini: ' + x.note : undefined }));
 }
 
 export const GOAL_WORDS = [/\bgoal+s?\b/i, /\bscor(e|ed|es)\b/i, /\bget in\b/i, /\bwhat a (strike|finish|hit|goal)\b/i, /\bin the back of the net\b/i, /\bone[- ]nil\b|\btwo[- ]nil\b/i];

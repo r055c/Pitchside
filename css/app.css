@@ -207,3 +207,9 @@ a.dl{display:flex;align-items:center;justify-content:center;gap:8px;text-decorat
 .evs{list-style:none;margin:8px 0;padding:0}.evs li{padding:8px 0;border-bottom:1px solid var(--line);font-size:15px;display:flex;gap:8px;align-items:center;flex-wrap:wrap}
 .evs .ok{color:#2f9e5b;font-weight:700}.evs .no{color:var(--muted)}.evs button{margin-left:auto;min-height:36px;padding:0 14px}
 .cand.big{align-items:flex-start}.chips{display:flex;flex-wrap:wrap;gap:4px;flex:1}.chip{font-style:normal;font-size:12px;padding:3px 8px;border-radius:99px;background:var(--bg);border:1px solid var(--line)}
+
+.gem{border:1px solid var(--line,#ddd);border-radius:12px;padding:10px 12px;margin:10px 0;display:grid;gap:8px}
+.gem input[type=password],.gem select{width:100%;padding:10px;border-radius:8px;border:1px solid var(--line,#ccc);font:inherit}
+.gem .chk{display:flex;gap:8px;align-items:flex-start;font-size:.8rem;line-height:1.35}
+.gem .chk input{margin-top:3px;flex:none}
+.gem small{font-weight:400;opacity:.7}

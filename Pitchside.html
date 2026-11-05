@@ -222,11 +222,17 @@ a.dl{display:flex;align-items:center;justify-content:center;gap:8px;text-decorat
 .evs .ok{color:#2f9e5b;font-weight:700}.evs .no{color:var(--muted)}.evs button{margin-left:auto;min-height:36px;padding:0 14px}
 .cand.big{align-items:flex-start}.chips{display:flex;flex-wrap:wrap;gap:4px;flex:1}.chip{font-style:normal;font-size:12px;padding:3px 8px;border-radius:99px;background:var(--bg);border:1px solid var(--line)}
 
+.gem{border:1px solid var(--line,#ddd);border-radius:12px;padding:10px 12px;margin:10px 0;display:grid;gap:8px}
+.gem input[type=password],.gem select{width:100%;padding:10px;border-radius:8px;border:1px solid var(--line,#ccc);font:inherit}
+.gem .chk{display:flex;gap:8px;align-items:flex-start;font-size:.8rem;line-height:1.35}
+.gem .chk input{margin-top:3px;flex:none}
+.gem small{font-weight:400;opacity:.7}
+
 </style>
 </head>
 <body>
 <div id="app"></div>
-<footer class="ver" id="ver">Version <b id="verTxt">5 Nov 2026, 19:59</b></footer>
+<footer class="ver" id="ver">Version <b id="verTxt">5 Nov 2026, 20:19</b></footer>
 <div id="toast" role="status" aria-live="polite"></div>
 <script>
 const DB=(()=>{
@@ -458,7 +464,7 @@ async function makeHighlightsVideo(file, { clips, us, them, title = 'Highlights'
 }
 
 return {pickMime,makeHighlightsVideo};})();
-const {SOURCES,fuse,soundEvents,speechEvents,GOAL_WORDS,isGoalTalk,isStrongGoalTalk}=(()=>{
+const {SOURCES,fuse,soundEvents,speechEvents,geminiEvents,GOAL_WORDS,isGoalTalk,isStrongGoalTalk}=(()=>{
 // Pitchside smart goal finder: merges every weak signal (scoreboard, ball + kick-off, crowd noise, cheering/whistle
 // sound classifier, spoken "goal") into one ranked list. If the final score is known, the best N are picked.
 // Pure functions, no browser needed.
@@ -470,6 +476,7 @@ const SOURCES = {
   speech: { label: 'Someone said "goal"', rank: 3 },
   cheer: { label: 'Cheering', rank: 4 },
   crowd: { label: 'Crowd roar', rank: 5 },
+  gemini: { label: 'Gemini saw a goal', rank: 6 },   // watches the video, but its times are only roughly right
 };
 
 // events: [{ src, t, conf (0-1), side?, note? }]. Returns candidates sorted by time:
@@ -532,11 +539,160 @@ function speechEvents(speech) {
   return speech.hits.map(h => ({ src: 'speech', t: Math.max(0, h.t - 2), conf: h.strong ? 0.45 : 0.2, note: `Heard: "${String(h.text).slice(0, 40)}"` }));
 }
 
+// ---- evidence from Gemini: { goals: [{ t, side, conf, note }] } ----
+function geminiEvents(g) {
+  if (!g || !g.goals) return [];
+  return g.goals.map(x => ({ src: 'gemini', t: x.t, conf: 0.5 + 0.2 * (x.conf == null ? 0.5 : x.conf), side: x.side || undefined, note: x.note ? 'Gemini: ' + x.note : undefined }));
+}
+
 const GOAL_WORDS = [/\bgoal+s?\b/i, /\bscor(e|ed|es)\b/i, /\bget in\b/i, /\bwhat a (strike|finish|hit|goal)\b/i, /\bin the back of the net\b/i, /\bone[- ]nil\b|\btwo[- ]nil\b/i];
 function isGoalTalk(text) { return GOAL_WORDS.some(r => r.test(text)); }
 function isStrongGoalTalk(text) { return /\bgoal+s?\b|\bin the back of the net\b/i.test(text); }
 
-return {SOURCES,fuse,soundEvents,speechEvents,GOAL_WORDS,isGoalTalk,isStrongGoalTalk};})();
+return {SOURCES,fuse,soundEvents,speechEvents,geminiEvents,GOAL_WORDS,isGoalTalk,isStrongGoalTalk};})();
+const {listModels,uploadVideo,deleteUpload,parseClock,askGoals}=(()=>{
+// Ask Gemini (beta): sends the match video to Google's Gemini with YOUR OWN free API key (from aistudio.google.com)
+// and asks it to list the goals. Your browser talks to Google directly; the key is never sent anywhere else.
+// Steps: list models -> upload the video (File API) -> ask in 15-minute parts -> delete the upload.
+
+const API = 'https://generativelanguage.googleapis.com';
+
+const sleep = (ms, signal) => new Promise((res, rej) => {
+  const t = setTimeout(res, ms);
+  if (signal) signal.addEventListener('abort', () => { clearTimeout(t); rej(new Error('Stopped.')); }, { once: true });
+});
+
+async function api(path, key, { method = 'GET', body, signal } = {}) {
+  let res;
+  try {
+    res = await fetch(API + path, { method, signal, headers: { 'x-goog-api-key': key, ...(body ? { 'Content-Type': 'application/json' } : {}) }, body: body ? JSON.stringify(body) : undefined });
+  } catch (e) { if (e.name === 'AbortError') throw new Error('Stopped.'); throw new Error('Could not reach Google (' + (e.message || 'network error') + '). Check the internet connection, or whether this network blocks Google.'); }
+  const text = await res.text(); let json = null; try { json = text ? JSON.parse(text) : null; } catch (_) {}
+  if (!res.ok) { const err = new Error(friendly(res.status, json, text)); err.status = res.status; err.retryAfter = retryDelay(json); throw err; }
+  return json;
+}
+
+function retryDelay(json) {
+  try { const d = (json.error.details || []).find(x => x.retryDelay); if (d) return Math.min(120, Math.ceil(parseFloat(d.retryDelay))); } catch (_) {}
+  return null;
+}
+function friendly(status, json, text) {
+  const msg = (json && json.error && json.error.message) || String(text || '').slice(0, 200);
+  if (status === 400 && /API key|API_KEY/i.test(msg)) return 'Google did not accept that key. Check you pasted all of it.';
+  if (status === 401 || status === 403) return 'Google refused the request (' + status + '): ' + msg;
+  if (status === 429) return 'Google’s free limit was reached: ' + msg.slice(0, 160);
+  return 'Google said (' + status + '): ' + msg.slice(0, 240);
+}
+
+// ---- models: pick sensible video-capable ones ----
+async function listModels(key, { signal } = {}) {
+  const out = []; let token = '';
+  for (let i = 0; i < 5; i++) {
+    const j = await api('/v1beta/models?pageSize=100' + (token ? '&pageToken=' + encodeURIComponent(token) : ''), key, { signal });
+    for (const m of (j && j.models) || []) {
+      const name = String(m.name || '').replace(/^models\//, '');
+      if (!/^gemini/.test(name) || !(m.supportedGenerationMethods || []).includes('generateContent')) continue;
+      if (/image|tts|embed|live|audio|robotics|computer|lite|exp-|customtools|learnlm/i.test(name)) continue;
+      out.push({ name, label: m.displayName || name });
+    }
+    token = j && j.nextPageToken; if (!token) break;
+  }
+  const ver = n => { const v = n.match(/gemini-(\d+(?:\.\d+)?)/); return v ? parseFloat(v[1]) : 0; };
+  const score = n => (/flash/.test(n) ? 1000 : /pro/.test(n) ? 500 : 0) + ver(n) * 10 - (/preview|latest/.test(n) ? 60 : 0);
+  out.sort((a, b) => score(b.name) - score(a.name));
+  if (!out.length) throw new Error('That key works, but I could not find a Gemini model that can watch video on it.');
+  return out;
+}
+
+// ---- upload (resumable) with progress ----
+async function uploadVideo(key, file, { onProgress = () => {}, signal } = {}) {
+  const mime = file.type || (/\.mov$/i.test(file.name) ? 'video/quicktime' : 'video/mp4');
+  let start;
+  try {
+    start = await fetch(API + '/upload/v1beta/files', {
+      method: 'POST', signal,
+      headers: { 'x-goog-api-key': key, 'X-Goog-Upload-Protocol': 'resumable', 'X-Goog-Upload-Command': 'start',
+        'X-Goog-Upload-Header-Content-Length': String(file.size), 'X-Goog-Upload-Header-Content-Type': mime, 'Content-Type': 'application/json' },
+      body: JSON.stringify({ file: { display_name: 'pitchside-match' } }),
+    });
+  } catch (e) { if (e.name === 'AbortError') throw new Error('Stopped.'); throw new Error('Could not start the upload to Google (' + (e.message || 'network error') + ').'); }
+  if (!start.ok) { let j = null, t = ''; try { t = await start.text(); j = JSON.parse(t); } catch (_) {} throw new Error(friendly(start.status, j, t)); }
+  const url = start.headers.get('x-goog-upload-url');
+  if (!url) throw new Error('Google did not return an upload address (the browser may be hiding it). Try Chrome or Edge.');
+  const info = await new Promise((resolve, reject) => {
+    const x = new XMLHttpRequest(); x.open('POST', url);
+    x.setRequestHeader('X-Goog-Upload-Command', 'upload, finalize'); x.setRequestHeader('X-Goog-Upload-Offset', '0');
+    x.upload.onprogress = e => { if (e.lengthComputable) onProgress(e.loaded / e.total); };
+    x.onload = () => { try { const j = JSON.parse(x.responseText); if (x.status >= 200 && x.status < 300 && j.file) resolve(j.file); else reject(new Error(friendly(x.status, j, x.responseText))); } catch (e) { reject(new Error('Upload to Google failed (' + x.status + ').')); } };
+    x.onerror = () => reject(new Error('The upload to Google was interrupted. Check the connection and try again.'));
+    x.onabort = () => reject(new Error('Stopped.'));
+    if (signal) signal.addEventListener('abort', () => x.abort(), { once: true });
+    x.send(file);
+  });
+  // wait until Google has processed it
+  let f = info;
+  for (let i = 0; i < 150 && f.state && f.state !== 'ACTIVE'; i++) {
+    if (f.state === 'FAILED') throw new Error('Google could not process this video file.');
+    await sleep(4000, signal);
+    f = await api('/v1beta/' + f.name, key, { signal });
+  }
+  if (f.state && f.state !== 'ACTIVE') throw new Error('Google is taking too long to process the video. Try again in a few minutes.');
+  return { name: f.name, uri: f.uri, mimeType: f.mimeType || mime };
+}
+
+async function deleteUpload(key, name) { try { await api('/v1beta/' + name, key, { method: 'DELETE' }); return true; } catch (_) { return false; } }
+
+// ---- ask ----
+function parseClock(s) {
+  const m = String(s == null ? '' : s).trim().match(/^(?:(\d+):)?(\d{1,3}):(\d{2})(?:\.\d+)?$/) || null;
+  if (m) return (m[1] ? +m[1] * 3600 : 0) + +m[2] * 60 + +m[3];
+  const n = parseFloat(s); return isFinite(n) ? n : null;
+}
+const mmss = t => { t = Math.max(0, Math.round(t)); const h = Math.floor(t / 3600), m = Math.floor(t % 3600 / 60), s = t % 60; return (h ? h + ':' + String(m).padStart(2, '0') : m) + ':' + String(s).padStart(2, '0'); };
+
+const SCHEMA = { type: 'OBJECT', properties: { goals: { type: 'ARRAY', items: { type: 'OBJECT', properties: {
+  time_in_video: { type: 'STRING' }, team: { type: 'STRING' }, confidence: { type: 'NUMBER' }, evidence: { type: 'STRING' } },
+  required: ['time_in_video', 'team'] } } }, required: ['goals'] };
+
+function prompt(us, them, a, b) {
+  return `This is a video of a football (soccer) match between "${us}" and "${them}". You are looking at the part from ${mmss(a)} to ${mmss(b)} of the video. ` +
+    `List every goal that is actually scored in this part (not shots that are saved, missed or blocked, and not goals that are disallowed). ` +
+    `For each goal give: time_in_video = the moment the ball crosses the line, as mm:ss on the video's own timeline counted from the very start of the whole video (NOT the match clock); ` +
+    `team = exactly "${us}" or "${them}" for the team that scored; confidence from 0 to 1; evidence = a few words (for example "scoreboard changed to 2-1, players celebrating"). ` +
+    `Use the scoreboard, the celebrations, the restart from the centre circle and the commentary or crowd noise. If you are not sure there was a goal, leave it out. If there are no goals, return an empty list.`;
+}
+
+// Returns { goals: [{ t, team, conf, note }], parts: n }. onProgress({ part, parts, text }).
+async function askGoals(key, model, file, { us, them, duration, partSeconds = 900, onProgress = () => {}, signal } = {}) {
+  const parts = []; for (let a = 0; a < duration; a += partSeconds) parts.push([a, Math.min(duration, a + partSeconds)]);
+  const goals = [];
+  for (let i = 0; i < parts.length; i++) {
+    const [a, b] = parts[i];
+    onProgress({ part: i + 1, parts: parts.length, text: `Asking Gemini about ${mmss(a)}–${mmss(b)} (part ${i + 1} of ${parts.length})…` });
+    const body = { contents: [{ parts: [{ fileData: { mimeType: file.mimeType, fileUri: file.uri }, videoMetadata: { startOffset: Math.floor(a) + 's', endOffset: Math.ceil(b) + 's' } }, { text: prompt(us, them, a, b) }] }],
+      generationConfig: { temperature: 0, responseMimeType: 'application/json', responseSchema: SCHEMA, mediaResolution: 'MEDIA_RESOLUTION_LOW' } };
+    let j = null;
+    for (let tryN = 0; tryN < 6; tryN++) {
+      try { j = await api(`/v1beta/models/${encodeURIComponent(model)}:generateContent`, key, { method: 'POST', body, signal }); break; }
+      catch (e) {
+        if (e.status === 429 && tryN < 5) { const w = e.retryAfter || 45; for (let s = w; s > 0; s--) { onProgress({ part: i + 1, parts: parts.length, text: `Google’s free limit reached, waiting ${s}s then carrying on (part ${i + 1} of ${parts.length})…` }); await sleep(1000, signal); } continue; }
+        if (e.status >= 500 && tryN < 3) { await sleep(5000, signal); continue; }
+        throw e;
+      }
+    }
+    const text = j && j.candidates && j.candidates[0] && j.candidates[0].content && j.candidates[0].content.parts && j.candidates[0].content.parts.map(p => p.text || '').join('');
+    let list = []; try { list = (JSON.parse(text || '{}').goals) || []; } catch (_) {
+      const fin = j && j.candidates && j.candidates[0] && j.candidates[0].finishReason; if (fin && fin !== 'STOP') throw new Error('Gemini did not answer this part (' + fin + ').'); }
+    const found = list.map(g => ({ t: parseClock(g.time_in_video), team: String(g.team || ''), conf: Math.max(0, Math.min(1, +g.confidence || 0.5)), note: String(g.evidence || '').slice(0, 70) })).filter(g => g.t != null);
+    // some answers count from the start of the clip instead of the whole video; fix those
+    if (a > 600 && found.length && found.every(g => g.t < a - 20)) found.forEach(g => { g.t += a; });
+    for (const g of found) if (g.t >= a - 30 && g.t <= b + 30) goals.push(g);
+  }
+  goals.sort((x, y) => x.t - y.t);
+  return { goals, parts: parts.length };
+}
+
+return {listModels,uploadVideo,deleteUpload,parseClock,askGoals};})();
 const {mmss,cleanTrack,suggestZones,restarts,findCandidates,parseOutput,getOrt,hasWebGPU,loadBallSession,detectOnce,scanBall}=(()=>{
 // Pitchside ball tracker: runs a football ball detector (an .onnx file) in the browser with ONNX Runtime Web,
 // then turns the ball positions into goal candidates. Needs the hosted version (WebGPU/WASM files are loaded
@@ -2211,8 +2367,10 @@ function evidenceFor(m, n) {
   }
   if (m.sound) { const se = soundEvents(m.sound); ev.push(...se); notes.cheer = se.length; }
   if (m.speech) { const sp = speechEvents(m.speech); ev.push(...sp); notes.speech = sp.length; }
+  if (m.gemini) { const ge = geminiEvents(m.gemini); ev.push(...ge); notes.gemini = ge.length; }
   return { ev, notes };
 }
+const G = { key: lsGet('ps_gemini_key', ''), rem: !!lsGet('ps_gemini_key', ''), ok: false, models: null, model: '' };
 function smartFinder(m) {
   if (!haveFile(m) && !m.raw && !m.scoreEvents && !m.ballTrack) return needVideo();
   let ctrl = null, picks = new Set(), cands = [], busy = false;
@@ -2222,6 +2380,7 @@ function smartFinder(m) {
   let typed = (m.finalUs != null && m.finalThem != null) ? [String(m.finalUs), String(m.finalThem)] : ['', ''];
   const render = (msg) => {
     if ($('#sfUs')) typed = [$('#sfUs').value, $('#sfThem').value];   // keep what was typed across redraws
+    readG();
     const score = typed;
     scrim.innerHTML = `<div class="sheet wide" role="dialog" aria-label="Smart goal finder"><h4>Smart goal finder</h4>
       <div class="fs"><label>${esc(m.us)}<input id="sfUs" type="number" inputmode="numeric" min="0" max="30" value="${score[0]}"></label>
@@ -2234,6 +2393,15 @@ function smartFinder(m) {
         <li>${status(!!m.sound, 'Cheering and whistles &mdash; ' + (m.sound ? 'done' : 'not run'))} <button class="ghost sm" id="sfSound" ${busy ? 'disabled' : ''}>${m.sound ? 'Redo' : 'Listen'}</button></li>
         <li>${status(!!m.speech, 'Spoken &ldquo;goal&rdquo; &mdash; ' + (m.speech ? m.speech.hits.length + ' mentions in ' + m.speech.words + ' words heard' : 'not run (needs voices on the recording)'))} <button class="ghost sm" id="sfSpeech" ${busy ? 'disabled' : ''}>${m.speech ? 'Redo' : 'Listen'}</button></li>
       </ul>
+      <div class="gem">
+        <b>Ask Gemini <small>(watches the video &mdash; needs your own free key)</small></b>
+        <p class="note">${m.gemini ? `Done: Gemini found ${m.gemini.goals.length} goal${m.gemini.goals.length === 1 ? '' : 's'} (${esc(m.gemini.model)}).` : 'Gemini is Google&rsquo;s AI. It watches the whole match and lists the goals. Get a free key at <a href="https://aistudio.google.com/apikey" target="_blank" rel="noopener">aistudio.google.com/apikey</a>.'}</p>
+        <input id="gKey" type="password" autocomplete="off" spellcheck="false" placeholder="Paste your Gemini key" value="${esc(G.key)}">
+        ${G.models ? `<select id="gModel">${G.models.map(x => `<option value="${esc(x.name)}" ${x.name === G.model ? 'selected' : ''}>${esc(x.name)}</option>`).join('')}</select>` : ''}
+        <label class="chk"><input type="checkbox" id="gOk" ${G.ok ? 'checked' : ''}> I&rsquo;m happy for this video to be uploaded to Google with my key. (Google may use free-tier uploads to improve its products, so avoid footage you should not share, such as other people&rsquo;s children.)</label>
+        <label class="chk"><input type="checkbox" id="gRem" ${G.rem ? 'checked' : ''}> Remember the key on this device</label>
+        <button class="ghost sm" id="sfGem" ${busy ? 'disabled' : ''}>${m.gemini ? 'Ask again' : 'Ask Gemini'}</button> <button class="ghost sm" id="gForget" ${G.key ? '' : 'hidden'}>Forget key</button>
+      </div>
       <p class="note" id="sfMsg">${msg || ''}</p>
       <div id="sfList"></div>
       <button class="primary wide" id="sfGo" ${busy ? 'disabled' : ''}>Find the goals</button>
@@ -2241,7 +2409,9 @@ function smartFinder(m) {
       <button class="cancel" id="sfClose">${busy ? 'Cancel' : 'Close'}</button></div>`;
     $('#sfClose').onclick = () => { if (ctrl) ctrl.abort(); scrim.remove(); };
     $('#sfSound').onclick = () => runSound(); $('#sfSpeech').onclick = () => runSpeech(); $('#sfGo').onclick = () => combine();
+    $('#sfGem').onclick = () => runGemini(); $('#gForget').onclick = () => { G.key = ''; G.models = null; G.rem = false; lsSet('ps_gemini_key', ''); render('Key forgotten.'); };
   };
+  const readG = () => { if ($('#gKey')) { G.key = $('#gKey').value.trim(); G.ok = $('#gOk').checked; G.rem = $('#gRem').checked; if ($('#gModel')) G.model = $('#gModel').value; } };
   const setMsg = t => { const e = $('#sfMsg'); if (e) e.textContent = t; };
   const needAudio = () => { if (!haveFile(m)) { toast('Attach the match video first'); return false; } if (!audioSupported()) { setMsg('This needs Chrome or Edge on a computer.'); return false; } return true; };
   const wasLong = (p) => `${clock((p.seconds != null ? p.seconds : 0))} listened to`;
@@ -2274,6 +2444,30 @@ function smartFinder(m) {
       busy = false; render(ctrl.signal.aborted ? 'Stopped.' : (r.words < 30 ? 'Done, but hardly any speech was heard, so this clue will not help on this recording.' : 'Done.'));
     } catch (err) { busy = false; S.asr = null; render(err.message || 'The speech scan failed'); }
   }
+  async function runGemini() {
+    readG();
+    if (!haveFile(m)) return toast('Attach the match video first');
+    if (!G.key) return setMsg('Paste your Gemini key first.');
+    if (!G.ok) return setMsg('Tick the box to say you are happy for the video to be uploaded to Google.');
+    let dur = m.duration || (m.video && m.video.duration) || 0;
+    if (!dur) { try { dur = (await probeVideo(S.file)).duration; } catch (_) {} }
+    if (!dur || !isFinite(dur)) return setMsg('I could not work out how long the video is.');
+    busy = true; render('Checking the key\u2026'); ctrl = new AbortController(); let up = null;
+    try {
+      if (!G.models) { G.models = await listModels(G.key, { signal: ctrl.signal }); }
+      if (!G.models.some(x => x.name === G.model)) G.model = lsGet('ps_gemini_model', '') && G.models.some(x => x.name === lsGet('ps_gemini_model', '')) ? lsGet('ps_gemini_model', '') : G.models[0].name;
+      lsSet('ps_gemini_key', G.rem ? G.key : ''); lsSet('ps_gemini_model', G.model);
+      setMsg('Uploading the video to Google\u2026 0%');
+      up = await uploadVideo(G.key, S.file, { signal: ctrl.signal, onProgress: f => setMsg(`Uploading the video to Google\u2026 ${Math.round(f * 100)}% (a 200 MB match can take several minutes)`) });
+      const r = await askGoals(G.key, G.model, up, { us: m.us, them: m.them, duration: dur, signal: ctrl.signal, onProgress: p => setMsg(p.text) });
+      m.gemini = { model: G.model, at: Date.now(), goals: r.goals.map(g => ({ t: g.t, side: sideFromText(m, g.team), conf: g.conf, note: g.note })) };
+      await DB.saveMatch(m);
+      busy = false; render(`Done. Gemini listed ${r.goals.length} goal${r.goals.length === 1 ? '' : 's'}: ${r.goals.map(g => clock(g.t)).join(', ') || 'none'}. Now press Find the goals.`);
+    } catch (err) {
+      busy = false; if (err.status === 400 || err.status === 401 || err.status === 403) G.models = null;
+      render(err.message || 'Gemini did not work');
+    } finally { if (up) deleteUpload(G.key, up.name); }
+  }
   function combine() {
     const a = parseInt($('#sfUs').value, 10), b = parseInt($('#sfThem').value, 10);
     const known = a >= 0 && b >= 0 ? a + b : null;
@@ -2283,7 +2477,7 @@ function smartFinder(m) {
     if (!ev.length) return setMsg('There is no evidence yet. Run Scan match, the ball tracker, or one of the Listen buttons.');
     cands = fuse(ev, { n: known });
     picks = new Set(); cands.forEach((c, i) => { if (c.picked) picks.add(i); });
-    const names = { crowd: 'crowd noise', board: 'scoreboard', ball: 'ball', cheer: 'cheering', speech: 'speech' };
+    const names = { crowd: 'crowd noise', board: 'scoreboard', ball: 'ball', cheer: 'cheering', speech: 'speech', gemini: 'Gemini' };
     setMsg(`Used: ${Object.keys(notes).map(k => names[k] || k).join(', ')}.${known != null ? ` Kept the ${known} most likely, for a final score of ${a}–${b}.` : ' Without the final score it keeps only the strongest.'}`);
     const rows = cands.slice().map((c, i) => [c, i]).sort((x, y) => (y[0].picked - x[0].picked) || (x[0].time - y[0].time));
     $('#sfList').innerHTML = rows.map(([c, i]) => `<label class="cand big"><input type="checkbox" data-i="${i}" ${picks.has(i) ? 'checked' : ''}>

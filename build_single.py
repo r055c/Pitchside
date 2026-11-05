@@ -25,7 +25,7 @@ def wrap(path):
     return "const {"+",".join(ns)+"}=(()=>{\n"+body+"\nreturn {"+",".join(ns)+"};})();\n"
 # order matters: a module may only use modules above it
 js="const DB=(()=>{\n"+re.sub(r'^export ','',r('js/db.js'),flags=re.M)+"\nreturn {allMatches,getMatch,saveMatch,deleteMatch,newId};})();\n"
-js+="".join(wrap(p) for p in ['js/export.js','js/fuse.js','js/ball.js','js/audio.js','js/sound.js','js/speech.js','js/analysis.js'])
+js+="".join(wrap(p) for p in ['js/export.js','js/fuse.js','js/gemini.js','js/ball.js','js/audio.js','js/sound.js','js/speech.js','js/analysis.js'])
 js+=re.sub(r"^import .*$\n",'',r('js/app.js'),flags=re.M)
 js=js.replace("</script>","<\\/script>")
 h=r('index.html')
