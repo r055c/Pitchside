@@ -1134,9 +1134,4 @@ function momentsTab(m) {
 if ('serviceWorker' in navigator && (location.protocol === 'https:' || ['localhost','127.0.0.1'].includes(location.hostname))) {
   navigator.serviceWorker.register('sw.js').catch(() => {});
 }
-// One-time setup link: https://your-site/?gk=KEY saves the Gemini key in this browser, then removes it from the address bar.
-try {
-  const q = new URLSearchParams(location.search), k = q.get('gk');
-  if (k) { lsSet('ps_gemini_key', k.trim()); G.key = k.trim(); G.rem = true; q.delete('gk'); const qs = q.toString(); history.replaceState(null, '', location.pathname + (qs ? '?' + qs : '') + location.hash); }
-} catch (_) {}
 route();
