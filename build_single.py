@@ -18,9 +18,11 @@ r=lambda p: open(p,encoding='utf-8').read()
 db=re.sub(r'^export ','',r('js/db.js'),flags=re.M)
 an=re.sub(r'^export ','',r('js/analysis.js'),flags=re.M)
 ex=re.sub(r'^export ','',r('js/export.js'),flags=re.M)
+ba=re.sub(r'^export ','',r('js/ball.js'),flags=re.M)
 app=re.sub(r"^import .*$\n",'',r('js/app.js'),flags=re.M)
 js=("const DB=(()=>{\n"+db+"\nreturn {allMatches,getMatch,saveMatch,deleteMatch,newId};})();\n"
     "const {makeHighlightsVideo,pickMime}=(()=>{\n"+ex+"\nreturn {makeHighlightsVideo,pickMime};})();\n"
+    "const {loadBallSession,scanBall,hasWebGPU,cleanTrack,suggestZones,findCandidates}=(()=>{\n"+ba+"\nreturn {loadBallSession,scanBall,hasWebGPU,cleanTrack,suggestZones,findCandidates};})();\n"
     "const {scanVideo,probeVideo,processSignals,findGoals,findScoreChanges,snapToRoar,trainGoalModel}=(()=>{\n"+an+"\nreturn {DEFAULTS,percentile,processSignals,probeVideo,scanVideo,findGoals,findScoreChanges,snapToRoar,trainGoalModel};})();\n"+app)
 js=js.replace("</script>","<\\/script>")
 h=r('index.html')

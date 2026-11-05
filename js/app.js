@@ -1,6 +1,7 @@
 import * as DB from './db.js';
 import { scanVideo, probeVideo, processSignals, findGoals, findScoreChanges, snapToRoar, trainGoalModel } from './analysis.js';
 import { makeHighlightsVideo, pickMime } from './export.js';
+import { loadBallSession, scanBall, hasWebGPU, cleanTrack, suggestZones, findCandidates } from './ball.js';
 
 // ============================================================ helpers
 const $ = (s, r = document) => r.querySelector(s);
@@ -25,7 +26,7 @@ function toast(msg) {
 function go(hash) { if (location.hash === hash) route(); else location.hash = hash; }
 
 // ============================================================ state
-const S = { file: null, fileUrl: null, fileFor: null, rate: 4, scanning: null, reel: null, clipEnd: null, clipId: null, tick: null, ourSeek: false, pendingPlay: null };
+const S = { file: null, fileUrl: null, fileFor: null, rate: 4, ballFps: 2, ball: { name: null, buffer: null, sess: null }, scanning: null, reel: null, clipEnd: null, clipId: null, tick: null, ourSeek: false, pendingPlay: null };
 const haveFile = m => S.file && S.fileFor === m.id;
 function setFile(m, file) {
   if (S.fileUrl) URL.revokeObjectURL(S.fileUrl);
@@ -248,6 +249,7 @@ async function matchView(id, tab) {
 
 // ------------------------------------------------------------ setup / scan
 async function setupView(m) {
+  await restoreBallModel();
   const has = haveFile(m);
   app.innerHTML = `${topBar(`${m.us} v ${m.them}`, fmtDate(m.date), { menu: true })}<main class="stack">
     <section class="card">
@@ -264,6 +266,12 @@ async function setupView(m) {
       <p>Optional. Mark where the two score numbers are and the scan will notice every time one changes. That gives you the goal times and who scored, automatically.</p>
       <p class="note" id="sbState">${m.scoreBoxes ? 'Score area set. It will be read during the scan.' : ''}</p>
       <button class="ghost wide" id="markScore" ${has ? '' : 'disabled'}>${m.scoreBoxes ? 'Change the score area' : 'Mark the score area'}</button></section>
+    <section class="card quiet" id="ballCard"><h3>Track the ball (beta)</h3>
+      <p>Uses a football ball detector that runs in your browser to find the goals itself: the ball reaching a goal, then a kick-off from the centre spot. It is slow but needs no tagging. You need a ball model file (<code>.onnx</code>), loaded once.</p>
+      <p class="note" id="ballState">${ballStateText()}</p>
+      <label class="btn ghost filebtn"><input id="ballModel" type="file" accept=".onnx" hidden>${S.ball.name ? 'Use a different model file' : 'Choose the ball model (.onnx)'}</label>
+      <div class="fld"><span>Detail</span>${seg('ballSeg', [[1, 'Quick &middot; 1/s'], [2, 'Balanced &middot; 2/s'], [3, 'Thorough &middot; 3/s']], S.ballFps)}<small id="ballEta"></small></div>
+      <button class="ghost wide" id="goBall" ${has && S.ball.name ? '' : 'disabled'}>Track the ball and find goals</button></section>
     <section class="card quiet"><h3>Skip the scan?</h3>
       <p>If you already know when the goals were scored, skip scanning and just type the times in. Pitchside then builds the highlights video with a score graphic.</p>
       <button class="ghost wide" id="skipScan">Skip scan, enter goal times</button></section>
@@ -278,6 +286,9 @@ async function setupView(m) {
   const vf = $('#vfile');
   if (vf) vf.onchange = e => attachFile(m, e.target.files[0], () => setupView(m));
   const gb = $('#goScan'); if (gb) gb.onclick = () => startScan(m);
+  const bm = $('#ballModel'); if (bm) bm.onchange = e => chooseBallModel(m, e.target.files[0]);
+  wireSeg('ballSeg', v => { S.ballFps = +v; ballEta(m); }); ballEta(m);
+  const gbl = $('#goBall'); if (gbl) gbl.onclick = () => runBallScan(m);
   const ms = $('#markScore'); if (ms) ms.onclick = () => markScoreArea(m, () => setupView(m));
   $('#skipScan').onclick = async () => { m.events = []; m.curves = null; m.raw = null; m.duration = m.video.duration; m.half = m.halfTime || m.duration / 2; await DB.saveMatch(m); go(`#/match/${m.id}/moments`); };
   $('#ifile').onchange = async e => {
@@ -642,6 +653,143 @@ async function runExport(m) {
     scrim.remove();
     if (!(err && err.name === 'AbortError')) toast(err.message || 'Could not make the video');
   }
+}
+
+// ------------------------------------------------------------ ball tracker (beta)
+const KEEP = 'pitchside-keep', MODEL_KEY = '/__pitchside_ball_model';
+async function saveBallModel(name, buffer) {
+  try { const c = await caches.open(KEEP); await c.put(MODEL_KEY, new Response(buffer, { headers: { 'x-name': name } })); } catch (_) {}
+}
+async function restoreBallModel() {
+  if (S.ball.name) return;
+  try {
+    const c = await caches.open(KEEP), r = await c.match(MODEL_KEY);
+    if (r) { S.ball.name = r.headers.get('x-name') || 'ball model'; S.ball.buffer = await r.arrayBuffer(); S.ball.sess = null; }
+  } catch (_) {}
+}
+function ballStateText() {
+  if (!S.ball.name) return 'No model loaded yet.';
+  const mb = S.ball.buffer ? ` (${(S.ball.buffer.byteLength / 1048576).toFixed(0)} MB)` : '';
+  return `Model: ${esc(S.ball.name)}${mb}${S.ball.sess ? ` · ready, running on ${S.ball.sess.ep === 'webgpu' ? 'your graphics chip' : 'the CPU (slow)'}` : ''}. Kept on this device.`;
+}
+async function chooseBallModel(m, f) {
+  if (!f) return;
+  try {
+    const buf = await f.arrayBuffer();
+    if (buf.byteLength < 100000) throw new Error('That file is too small to be a model');
+    S.ball = { name: f.name, buffer: buf, sess: null };
+    await saveBallModel(f.name, buf);
+    toast('Model loaded: ' + f.name); setupView(m);
+  } catch (err) { toast(err.message || 'Could not read that file'); }
+}
+function ballEta(m) {
+  const el = $('#ballEta'); if (!el) return;
+  const d = m.video && m.video.duration;
+  el.textContent = d ? `${Math.round(d * S.ballFps).toLocaleString('en-GB')} frames to check. Pitchside times itself and tells you how long it will take.` : '';
+}
+async function runBallScan(m) {
+  if (!haveFile(m)) return needVideo();
+  if (!S.ball.buffer) return toast('Choose the ball model file first');
+  const ctrl = new AbortController(); let discard = false;
+  const scrim = document.createElement('div'); scrim.className = 'scrim';
+  scrim.innerHTML = `<div class="sheet" role="dialog" aria-label="Tracking the ball"><h4>Tracking the ball</h4>
+    <div class="bar"><i id="bbar" style="width:0%"></i></div><p class="note" id="btxt">Loading the model&hellip;</p>
+    <p class="note" id="bnote"></p>
+    <button id="bstop" class="primary" hidden>Stop here and use what it has found</button><button class="cancel" id="bcancel">Cancel</button></div>`;
+  document.body.appendChild(scrim);
+  $('#bcancel').onclick = () => { discard = true; ctrl.abort(); scrim.remove(); };
+  $('#bstop').onclick = () => ctrl.abort();
+  try {
+    if (!S.ball.sess) S.ball.sess = await loadBallSession(new Uint8Array(S.ball.buffer), { onStatus: t => { const e = $('#btxt'); if (e) e.textContent = t; } });
+    const sess = S.ball.sess;
+    if ($('#bnote')) $('#bnote').textContent = sess.ep === 'webgpu' ? 'Keep this tab in front. It is using your graphics chip.' : 'Your browser has no WebGPU, so this is running on the CPU and will be very slow. Chrome or Edge on a recent laptop is better.';
+    $('#bstop').hidden = false;
+    const res = await scanBall(S.file, sess, {
+      sampleFps: S.ballFps, signal: ctrl.signal,
+      onProgress: p => {
+        if (!$('#bbar')) return;
+        $('#bbar').style.width = Math.round(p.frac * 100) + '%';
+        const left = p.etaSec != null ? ` · about ${Math.max(1, Math.ceil(p.etaSec / 60))} min left` : '';
+        $('#btxt').textContent = p.hidden ? 'Paused: come back to this tab and it carries on.'
+          : `${clock(p.t)} of ${clock(p.duration)} · ball seen ${p.sightings} times in ${p.samples} frames${left}`;
+      },
+    });
+    scrim.remove();
+    if (discard) return;
+    if (res.rows.length < 20) return toast('The ball was hardly seen, so this model may not suit this footage. Try Thorough, or a different model.');
+    ballReview(m, res);
+  } catch (err) {
+    scrim.remove();
+    if (!discard) toast(err.message || 'Ball tracking failed');
+  }
+}
+function ballReview(m, res) {
+  const pts = cleanTrack(res.rows, res.duration);
+  if (pts.length < 20) return toast('Not enough ball sightings to work with');
+  const auto = suggestZones(pts); let zones = { left: auto.left.slice(), right: auto.right.slice(), centre: auto.centre.slice() };
+  let cands = [], armed = null, drag = null; const pick = new Set();
+  const scrim = document.createElement('div'); scrim.className = 'scrim';
+  scrim.innerHTML = `<div class="sheet wide" role="dialog" aria-label="Goals found"><h4>${res.partial ? 'Stopped early at ' + clock(res.coveredTo) : 'Ball tracking finished'}</h4>
+    <p class="note" id="rvSum"></p>
+    <div class="markwrap"><canvas id="rvCv"></canvas></div>
+    <p class="note">Yellow dots are where the ball was seen. The three boxes should sit on the left goal, the right goal and the centre spot. If one is wrong, tap its button then drag a new box on the picture.</p>
+    <div class="zbtns"><button data-z="left">Left goal</button><button data-z="centre">Centre spot</button><button data-z="right">Right goal</button><button data-z="auto">Reset</button></div>
+    <div id="rvList"></div>
+    <button class="primary wide" id="rvAdd">Add to the match</button><button class="cancel" id="rvClose">Close</button></div>`;
+  document.body.appendChild(scrim);
+  const cv = $('#rvCv'), ctx = cv.getContext('2d'), vid = document.createElement('video');
+  vid.muted = true; vid.preload = 'auto'; vid.src = S.fileUrl;
+  const COL = { left: '#34C6F4', right: '#34C6F4', centre: '#E64B9B' }, NAME = { left: 'left goal', right: 'right goal', centre: 'centre spot' };
+  const draw = () => {
+    if (!cv.width) return;
+    ctx.fillStyle = '#1b2a22'; ctx.fillRect(0, 0, cv.width, cv.height);
+    if (vid.readyState >= 2) ctx.drawImage(vid, 0, 0, cv.width, cv.height);
+    ctx.fillStyle = 'rgba(241,181,28,.5)';
+    for (const p of pts) ctx.fillRect(p[1] * cv.width - 1.5, p[2] * cv.height - 1.5, 3, 3);
+    for (const k of ['left', 'right', 'centre']) {
+      const z = (drag && drag.k === k) ? drag.z : zones[k];
+      ctx.lineWidth = 3; ctx.strokeStyle = COL[k]; ctx.strokeRect(z[0] * cv.width, z[2] * cv.height, (z[1] - z[0]) * cv.width, (z[3] - z[2]) * cv.height);
+      ctx.fillStyle = COL[k]; ctx.font = '600 14px system-ui'; ctx.fillText(NAME[k], z[0] * cv.width + 4, z[2] * cv.height + 16);
+    }
+  };
+  const recalc = () => {
+    cands = findCandidates(pts, zones, { sampleFps: S.ballFps });
+    pick.clear(); cands.forEach((c, i) => { if (c.restart) pick.add(i); });
+    const likely = cands.filter(c => c.restart).length;
+    $('#rvSum').textContent = `Likely goals found: ${likely}${m.finalUs != null ? ` (you told me the score was ${m.finalUs}–${m.finalThem}, so ${m.finalUs + m.finalThem} goals)` : ''}. Other times the ball reached a goal but no kick-off followed: ${cands.length - likely}.`;
+    $('#rvList').innerHTML = cands.length ? cands.map((c, i) => `<label class="cand"><input type="checkbox" data-i="${i}" ${pick.has(i) ? 'checked' : ''}>
+      <b>${clock(c.time)}</b><span>${c.end} goal</span><em>${c.restart ? 'Kick-off at ' + clock(c.restartAt) : 'maybe (shot or save?)'}</em></label>`).join('')
+      : '<p class="note">No goal-like moments found. Check the boxes above.</p>';
+    $$('#rvList input').forEach(cb => cb.onchange = () => { cb.checked ? pick.add(+cb.dataset.i) : pick.delete(+cb.dataset.i); upd(); });
+    upd(); draw();
+  };
+  const upd = () => { const b = $('#rvAdd'); b.disabled = !pick.size; b.textContent = pick.size ? `Add ${pick.size} goal${pick.size === 1 ? '' : 's'} to the match` : 'Tick the goals to add'; };
+  vid.onloadedmetadata = () => { cv.width = 720; cv.height = Math.round(720 * vid.videoHeight / vid.videoWidth); vid.currentTime = Math.min(vid.duration * 0.3, 600); draw(); };
+  vid.onseeked = draw;
+  const pt = e => { const r = cv.getBoundingClientRect(); return { x: Math.min(1, Math.max(0, (e.clientX - r.left) / r.width)), y: Math.min(1, Math.max(0, (e.clientY - r.top) / r.height)) }; };
+  cv.style.touchAction = 'none';
+  cv.onpointerdown = e => { if (!armed) return; cv.setPointerCapture(e.pointerId); const p = pt(e); drag = { k: armed, x0: p.x, y0: p.y, z: [p.x, p.x, p.y, p.y] }; };
+  cv.onpointermove = e => { if (!drag) return; const p = pt(e); drag.z = [Math.min(drag.x0, p.x), Math.max(drag.x0, p.x), Math.min(drag.y0, p.y), Math.max(drag.y0, p.y)]; draw(); };
+  cv.onpointerup = () => {
+    if (!drag) return;
+    if (drag.z[1] - drag.z[0] > 0.01 && drag.z[3] - drag.z[2] > 0.01) { zones[drag.k] = drag.z; }
+    drag = null; armed = null; $$('.zbtns button').forEach(b => b.classList.remove('on')); recalc();
+  };
+  $$('.zbtns button').forEach(b => b.onclick = () => {
+    if (b.dataset.z === 'auto') { zones = { left: auto.left.slice(), right: auto.right.slice(), centre: auto.centre.slice() }; armed = null; $$('.zbtns button').forEach(x => x.classList.remove('on')); return recalc(); }
+    armed = armed === b.dataset.z ? null : b.dataset.z; $$('.zbtns button').forEach(x => x.classList.toggle('on', x.dataset.z === armed));
+  });
+  const close = () => { scrim.remove(); vid.removeAttribute('src'); vid.load(); };
+  $('#rvClose').onclick = close;
+  $('#rvAdd').onclick = async () => {
+    if (!m.events) m.events = [];
+    if (!m.duration) { m.duration = res.duration || m.video.duration; m.half = m.halfTime || m.duration / 2; }
+    m.ballTrack = { fps: S.ballFps, duration: res.duration, rows: res.rows.map(r => [+r[0].toFixed(2), +r[1].toFixed(4), +r[2].toFixed(4), +r[3].toFixed(2)]) };
+    [...pick].sort((a, b) => cands[a].time - cands[b].time).forEach(i => addGoalAt(m, cands[i].time, null));
+    await DB.saveMatch(m); close(); finishEventEdit(m);
+    toast('Added. Now tap who scored on each goal.'); go(`#/match/${m.id}/moments`);
+  };
+  recalc();
 }
 
 // ------------------------------------------------------------ scoreboard marking

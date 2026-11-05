@@ -198,3 +198,9 @@ label.btn.filebtn{border-style:solid;background:transparent;color:var(--ink)}
 a.dl{display:flex;align-items:center;justify-content:center;gap:8px;text-decoration:none}
 
 .ver{text-align:center;font-size:12px;color:var(--muted,#6b756f);padding:18px 16px 28px;opacity:.85}.ver b{font-weight:700}
+.zbtns{display:flex;gap:6px;flex-wrap:wrap}.zbtns button{flex:1;min-height:44px;padding:0 10px;font-size:14px}.zbtns button.on{outline:3px solid var(--accent,#F1B51C)}
+.cand{display:flex;align-items:center;gap:10px;padding:10px 4px;border-bottom:1px solid var(--line,#d8d3c6);font-size:15px}.cand b{min-width:56px}.cand em{margin-left:auto;font-style:normal;color:var(--muted)}
+.sheet button.primary{background:var(--btn);color:var(--btn-ink)}
+.sheet button.primary:disabled{opacity:.4}
+.cand input{width:22px;min-height:22px;height:22px;padding:0;flex:none;accent-color:var(--ink)}
+.cand span{flex:none}

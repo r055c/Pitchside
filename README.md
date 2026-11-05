@@ -26,3 +26,19 @@ Tested end to end in headless Chrome on a synthetic match video. Not yet tested 
 ## Layout
 - `index.html`, `css/app.css`, `js/app.js` (UI), `js/analysis.js` (scan and moment detection), `js/db.js` (IndexedDB)
 - `sw.js`, `manifest.webmanifest`, `icons/` (PWA)
+
+
+## Track the ball (beta)
+
+An optional way to find goals with no tagging: a football ball detector (an `.onnx` model file) runs in your browser
+using ONNX Runtime Web (WebGPU where available, otherwise the CPU, which is very slow). Pitchside tracks the ball through
+the match and reports a goal when the ball reaches a goal area and then sits still on the centre spot (the kick-off).
+Shots and saves with no kick-off after them are listed as "maybe".
+
+- Needs the hosted version (the Vercel address). `Pitchside.html` (the single file) shows a message instead, because the
+  runtime files live in `js/vendor/ort/`.
+- Load the model once on the setup screen; it is kept on the device. A suitable open model:
+  https://huggingface.co/acatorcini/yolov9-soccer-ball (`v9b_best.onnx`, AGPL-3.0).
+- The goal and centre-spot boxes are guessed from where the ball travels; drag new boxes if they are wrong.
+- `js/ball.js` has the logic. `colab/Pitchside_ball_finder.ipynb` runs the same idea on a free Colab GPU.
+- `js/vendor/ort/` is ONNX Runtime Web 1.22.0 (MIT licence).
