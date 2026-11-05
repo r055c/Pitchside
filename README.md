@@ -4,9 +4,9 @@ Turn a football match recording into highlights and stats. Runs entirely in the 
 
 ## How it works
 1. Pick a match video, then name the teams.
-2. The app scans it quickly and silently, using crowd noise, whistles and camera movement to find likely moments.
-3. Review the moments and tag them (goal, shot, corner, save, foul; us or them).
-4. Summary tab: score, match-flow chart, head-to-head stats. Moments tab: replayable highlight reel.
+2. Find highlights: ask Gemini, or use crowd noise, whistles, the ball tracker or the scoreboard.
+3. Review highlights: check each one (goal, shot, corner, save, foul; us or them), with a Sky-style stats graphic.
+4. Export: goals only or all highlights, with or without a scoreboard, then make the video.
 
 ## Making the highlights video
 Goal times can come from four places: typed in (`12:34 Norton`), the "Goal here" buttons while watching, the Find goals button (uses the final score), or the scoreboard reader. **Make highlights video** then clips around each goal, adds a score graphic and GOAL banner, and records an MP4 (or WebM) in the browser.
@@ -50,7 +50,7 @@ Combines every clue into one ranked list and, when you give the final score, kee
 Clues: crowd noise (the match scan), the scoreboard reader, the ball tracker, **cheering and whistles**
 (Google YAMNet sound classifier, `js/sound.js`) and **spoken "goal"** (Whisper tiny English, `js/speech.js`).
 
-- Open it from the setup screen or the Moments tab. Every clue is optional; more clues means better answers.
+- Open it from the Find highlights step. Every clue is optional; more clues means better answers.
 - `js/audio.js` reads the match sound in about a minute with the browser's own decoder (Chrome/Edge, `.mp4` or `.mov`).
 - The two sound models download once from Hugging Face by the browser (YAMNet is kept in the Cache API; Whisper is cached
   by the library). If Hugging Face is blocked, choose `yamnet.onnx` yourself:
