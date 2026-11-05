@@ -235,7 +235,7 @@ a.dl{display:flex;align-items:center;justify-content:center;gap:8px;text-decorat
 </head>
 <body>
 <div id="app"></div>
-<footer class="ver" id="ver">Version <b id="verTxt">5 Nov 2026, 20:29</b></footer>
+<footer class="ver" id="ver">Version <b id="verTxt">5 Nov 2026, 20:38</b></footer>
 <div id="toast" role="status" aria-live="polite"></div>
 <script>
 const DB=(()=>{
@@ -565,12 +565,20 @@ const sleep = (ms, signal) => new Promise((res, rej) => {
   if (signal) signal.addEventListener('abort', () => { clearTimeout(t); rej(new Error('Stopped.')); }, { once: true });
 });
 
-async function api(path, key, { method = 'GET', body, signal } = {}) {
-  let res;
+async function api(path, key, { method = 'GET', body, signal, timeoutMs } = {}) {
+  let res, timedOut = false, timer = null;
+  const ac = new AbortController();
+  if (signal) { if (signal.aborted) ac.abort(); else signal.addEventListener('abort', () => ac.abort(), { once: true }); }
+  if (timeoutMs) timer = setTimeout(() => { timedOut = true; ac.abort(); }, timeoutMs);
   try {
-    res = await fetch(API + path, { method, signal, headers: { 'x-goog-api-key': key, ...(body ? { 'Content-Type': 'application/json' } : {}) }, body: body ? JSON.stringify(body) : undefined });
-  } catch (e) { if (e.name === 'AbortError') throw new Error('Stopped.'); throw new Error('Could not reach Google (' + (e.message || 'network error') + '). Check the internet connection, or whether this network blocks Google.'); }
-  const text = await res.text(); let json = null; try { json = text ? JSON.parse(text) : null; } catch (_) {}
+    res = await fetch(API + path, { method, signal: ac.signal, headers: { 'x-goog-api-key': key, ...(body ? { 'Content-Type': 'application/json' } : {}) }, body: body ? JSON.stringify(body) : undefined });
+  } catch (e) {
+    if (timedOut) { const er = new Error('Gemini took too long to answer.'); er.timeout = true; throw er; }
+    if (e.name === 'AbortError') throw new Error('Stopped.');
+    throw new Error('Could not reach Google (' + (e.message || 'network error') + '). Check the internet connection, or whether this network blocks Google.');
+  } finally { if (timer) clearTimeout(timer); }
+  let text; try { text = await res.text(); } catch (e) { if (timedOut) { const er = new Error('Gemini took too long to answer.'); er.timeout = true; throw er; } throw e; }
+  let json = null; try { json = text ? JSON.parse(text) : null; } catch (_) {}
   if (!res.ok) { const err = new Error(friendly(res.status, json, text)); err.status = res.status; err.retryAfter = retryDelay(json); throw err; }
   return json;
 }
@@ -674,14 +682,18 @@ async function askGoals(key, model, file, { us, them, duration, partSeconds = 90
     onProgress({ part: i + 1, parts: parts.length, text: `Asking Gemini about ${mmss(a)}–${mmss(b)} (part ${i + 1} of ${parts.length})…` });
     const body = { contents: [{ parts: [{ fileData: { mimeType: file.mimeType, fileUri: file.uri }, videoMetadata: { startOffset: Math.floor(a) + 's', endOffset: Math.ceil(b) + 's' } }, { text: prompt(us, them, a, b) }] }],
       generationConfig: { temperature: 0, responseMimeType: 'application/json', responseSchema: SCHEMA, mediaResolution: 'MEDIA_RESOLUTION_LOW' } };
-    let j = null;
-    for (let tryN = 0; tryN < 6; tryN++) {
-      try { j = await api(`/v1beta/models/${encodeURIComponent(model)}:generateContent`, key, { method: 'POST', body, signal }); break; }
+    let j = null, timeouts = 0;
+    for (let tryN = 0; tryN < 8; tryN++) {
+      const t0 = Date.now();
+      const tick = setInterval(() => onProgress({ part: i + 1, parts: parts.length, text: `Gemini is watching ${mmss(a)}\u2013${mmss(b)} (part ${i + 1} of ${parts.length})\u2026 ${Math.round((Date.now() - t0) / 1000)}s` + (timeouts ? ` (retry ${timeouts})` : '') }), 1000);
+      try { j = await api(`/v1beta/models/${encodeURIComponent(model)}:generateContent`, key, { method: 'POST', body, signal, timeoutMs: 240000 }); break; }
       catch (e) {
-        if (e.status === 429 && tryN < 5) { const w = e.retryAfter || 45; for (let s = w; s > 0; s--) { onProgress({ part: i + 1, parts: parts.length, text: `Google’s free limit reached, waiting ${s}s then carrying on (part ${i + 1} of ${parts.length})…` }); await sleep(1000, signal); } continue; }
+        if (e.timeout && timeouts < 2) { timeouts++; continue; }
+        if (e.timeout) throw new Error('Gemini did not answer part ' + (i + 1) + ' after three tries of 4 minutes each. Try a different model from the list, or try again later.');
+        if (e.status === 429 && tryN < 7) { const w = e.retryAfter || 45; for (let s = w; s > 0; s--) { onProgress({ part: i + 1, parts: parts.length, text: `Google\u2019s free limit reached, waiting ${s}s then carrying on (part ${i + 1} of ${parts.length})\u2026` }); await sleep(1000, signal); } continue; }
         if (e.status >= 500 && tryN < 3) { await sleep(5000, signal); continue; }
         throw e;
-      }
+      } finally { clearInterval(tick); }
     }
     const text = j && j.candidates && j.candidates[0] && j.candidates[0].content && j.candidates[0].content.parts && j.candidates[0].content.parts.map(p => p.text || '').join('');
     let list = []; try { list = (JSON.parse(text || '{}').goals) || []; } catch (_) {
