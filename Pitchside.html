@@ -218,21 +218,24 @@ a.dl{display:flex;align-items:center;justify-content:center;gap:8px;text-decorat
 .sheet button.primary:disabled{opacity:.4}
 .cand input{width:22px;min-height:22px;height:22px;padding:0;flex:none;accent-color:var(--ink)}
 .cand span{flex:none}
-.evs{list-style:none;margin:8px 0;padding:0}.evs li{padding:8px 0;border-bottom:1px solid var(--line);font-size:15px;display:flex;gap:8px;align-items:center;flex-wrap:wrap}
-.evs .ok{color:#2f9e5b;font-weight:700}.evs .no{color:var(--muted)}.evs button{margin-left:auto;min-height:36px;padding:0 14px}
+.evs{list-style:none;margin:8px 0;padding:0}.evs li{padding:8px 0;border-bottom:1px solid var(--line);font-size:15px;display:block;overflow:hidden;line-height:1.4}
+.evs .ok{color:#2f9e5b;font-weight:700}.evs .no{color:var(--muted)}.evs button{float:right;margin:0 0 0 10px;min-height:36px;padding:0 14px}
 .cand.big{align-items:flex-start}.chips{display:flex;flex-wrap:wrap;gap:4px;flex:1}.chip{font-style:normal;font-size:12px;padding:3px 8px;border-radius:99px;background:var(--bg);border:1px solid var(--line)}
 
-.gem{border:1px solid var(--line,#ddd);border-radius:12px;padding:10px 12px;margin:10px 0;display:grid;gap:8px}
-.gem input[type=password],.gem select{width:100%;padding:10px;border-radius:8px;border:1px solid var(--line,#ccc);font:inherit}
-.gem .chk{display:flex;gap:8px;align-items:flex-start;font-size:.8rem;line-height:1.35}
-.gem .chk input{margin-top:3px;flex:none}
+.gem{border:1px solid var(--line,#ddd);border-radius:12px;padding:12px;margin:10px 0;display:grid;gap:10px}
+.gem input[type=password]{width:100%;box-sizing:border-box}
+.gem select{width:100%;box-sizing:border-box}
+.gem .chk{display:flex;gap:10px;align-items:flex-start;font-size:13px;line-height:1.4;min-width:0}
+.gem .chk input{width:22px;min-width:22px;height:22px;min-height:22px;padding:0;margin:1px 0 0;flex:none;accent-color:var(--ink)}
+.gem .chk span{flex:1;min-width:0}
+.gem .gbtns{display:flex;gap:8px;flex-wrap:wrap}.gem .gbtns button{flex:1;min-height:44px}
 .gem small{font-weight:400;opacity:.7}
 
 </style>
 </head>
 <body>
 <div id="app"></div>
-<footer class="ver" id="ver">Version <b id="verTxt">5 Nov 2026, 20:19</b></footer>
+<footer class="ver" id="ver">Version <b id="verTxt">5 Nov 2026, 20:26</b></footer>
 <div id="toast" role="status" aria-live="polite"></div>
 <script>
 const DB=(()=>{
@@ -2398,9 +2401,9 @@ function smartFinder(m) {
         <p class="note">${m.gemini ? `Done: Gemini found ${m.gemini.goals.length} goal${m.gemini.goals.length === 1 ? '' : 's'} (${esc(m.gemini.model)}).` : 'Gemini is Google&rsquo;s AI. It watches the whole match and lists the goals. Get a free key at <a href="https://aistudio.google.com/apikey" target="_blank" rel="noopener">aistudio.google.com/apikey</a>.'}</p>
         <input id="gKey" type="password" autocomplete="off" spellcheck="false" placeholder="Paste your Gemini key" value="${esc(G.key)}">
         ${G.models ? `<select id="gModel">${G.models.map(x => `<option value="${esc(x.name)}" ${x.name === G.model ? 'selected' : ''}>${esc(x.name)}</option>`).join('')}</select>` : ''}
-        <label class="chk"><input type="checkbox" id="gOk" ${G.ok ? 'checked' : ''}> I&rsquo;m happy for this video to be uploaded to Google with my key. (Google may use free-tier uploads to improve its products, so avoid footage you should not share, such as other people&rsquo;s children.)</label>
-        <label class="chk"><input type="checkbox" id="gRem" ${G.rem ? 'checked' : ''}> Remember the key on this device</label>
-        <button class="ghost sm" id="sfGem" ${busy ? 'disabled' : ''}>${m.gemini ? 'Ask again' : 'Ask Gemini'}</button> <button class="ghost sm" id="gForget" ${G.key ? '' : 'hidden'}>Forget key</button>
+        <label class="chk"><input type="checkbox" id="gOk" ${G.ok ? 'checked' : ''}><span>I&rsquo;m happy for this video to be uploaded to Google with my key. (Google may use free-tier uploads to improve its products, so avoid footage you should not share, such as other people&rsquo;s children.)</span></label>
+        <label class="chk"><input type="checkbox" id="gRem" ${G.rem ? 'checked' : ''}><span>Remember the key on this device</span></label>
+        <div class="gbtns"><button class="ghost" id="sfGem" ${busy ? 'disabled' : ''}>${m.gemini ? 'Ask again' : 'Ask Gemini'}</button><button class="ghost" id="gForget" ${G.key && !busy ? '' : 'hidden'}>Forget key</button></div>
       </div>
       <p class="note" id="sfMsg">${msg || ''}</p>
       <div id="sfList"></div>

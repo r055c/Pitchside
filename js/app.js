@@ -715,9 +715,9 @@ function smartFinder(m) {
         <p class="note">${m.gemini ? `Done: Gemini found ${m.gemini.goals.length} goal${m.gemini.goals.length === 1 ? '' : 's'} (${esc(m.gemini.model)}).` : 'Gemini is Google&rsquo;s AI. It watches the whole match and lists the goals. Get a free key at <a href="https://aistudio.google.com/apikey" target="_blank" rel="noopener">aistudio.google.com/apikey</a>.'}</p>
         <input id="gKey" type="password" autocomplete="off" spellcheck="false" placeholder="Paste your Gemini key" value="${esc(G.key)}">
         ${G.models ? `<select id="gModel">${G.models.map(x => `<option value="${esc(x.name)}" ${x.name === G.model ? 'selected' : ''}>${esc(x.name)}</option>`).join('')}</select>` : ''}
-        <label class="chk"><input type="checkbox" id="gOk" ${G.ok ? 'checked' : ''}> I&rsquo;m happy for this video to be uploaded to Google with my key. (Google may use free-tier uploads to improve its products, so avoid footage you should not share, such as other people&rsquo;s children.)</label>
-        <label class="chk"><input type="checkbox" id="gRem" ${G.rem ? 'checked' : ''}> Remember the key on this device</label>
-        <button class="ghost sm" id="sfGem" ${busy ? 'disabled' : ''}>${m.gemini ? 'Ask again' : 'Ask Gemini'}</button> <button class="ghost sm" id="gForget" ${G.key ? '' : 'hidden'}>Forget key</button>
+        <label class="chk"><input type="checkbox" id="gOk" ${G.ok ? 'checked' : ''}><span>I&rsquo;m happy for this video to be uploaded to Google with my key. (Google may use free-tier uploads to improve its products, so avoid footage you should not share, such as other people&rsquo;s children.)</span></label>
+        <label class="chk"><input type="checkbox" id="gRem" ${G.rem ? 'checked' : ''}><span>Remember the key on this device</span></label>
+        <div class="gbtns"><button class="ghost" id="sfGem" ${busy ? 'disabled' : ''}>${m.gemini ? 'Ask again' : 'Ask Gemini'}</button><button class="ghost" id="gForget" ${G.key && !busy ? '' : 'hidden'}>Forget key</button></div>
       </div>
       <p class="note" id="sfMsg">${msg || ''}</p>
       <div id="sfList"></div>
