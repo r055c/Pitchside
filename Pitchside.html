@@ -366,7 +366,7 @@ a.dl{display:flex;align-items:center;justify-content:center;gap:8px;text-decorat
 </head>
 <body>
 <div id="app"></div>
-<footer class="ver" id="ver">Version <b id="verTxt">6 Nov 2026, 10:52</b></footer>
+<footer class="ver" id="ver">Version <b id="verTxt">6 Nov 2026, 12:27</b></footer>
 <div id="toast" role="status" aria-live="polite"></div>
 <script>
 const DB=(()=>{
@@ -2494,7 +2494,7 @@ async function startScan(m) {
     }
     await DB.saveMatch(m);
     if (res.frameCoverage != null && res.frameCoverage < 0.9) setTimeout(() => toast('Part of the video was not scanned properly. Keep this tab in front and scan again.'), 2600);
-    toast(res.partial ? `Scan stopped early at ${clock(res.coveredTo)}` : 'Scan finished. Now press Work out the goals.');
+    toast(res.partial ? `Scan stopped early at ${clock(res.coveredTo)}` : 'Scan finished. Now press Search for highlights.');
     go(`#/match/${m.id}/find`);
   } catch (err) {
     S.scanning = null;
@@ -2931,7 +2931,7 @@ function findTab(m) {
   const keyVal = GPROXY ? G.pass : G.key;
   const bodyHtml = () => {
     const gem = m.gemini;
-    return (cands.length ? `<div class="res"><h4>Goals found</h4><div id="sfList"></div></div>` : '') +
+    return (cands.length || hasMoms() ? `<div class="res"><h4>${cands.length ? 'Goals found' : 'Highlights found'}</h4><div id="sfList"></div></div>` : '') +
     sec('gemini', 'Ask Gemini', 'Recommended', gem ? `${gem.goals.length} goal${gem.goals.length === 1 ? '' : 's'}` : '', `
       <p class="note">${gem ? `Done: Gemini found ${gem.goals.length} goal${gem.goals.length === 1 ? '' : 's'} (${esc(gem.model)}).` : `Gemini is Google&rsquo;s AI. It watches the whole match, lists the goals, then takes a closer look at each one. ${GPROXY ? '' : 'Get a free key at <a href="https://aistudio.google.com/apikey" target="_blank" rel="noopener">aistudio.google.com/apikey</a>.'}`}</p>
       ${gem && gem.warnings && gem.warnings.length ? `<ul class="gemw">${gem.warnings.map(w => `<li>${esc(w)}</li>`).join('')}</ul>` : ''}
@@ -2970,6 +2970,7 @@ function findTab(m) {
       <textarea id="goalTimes" rows="4" placeholder="12:34 ${esc(m.us)}"></textarea>
       <button class="ghost wide" id="addGoals">Add these goals</button>`);
   };
+  const hasMoms = () => !!(m.gemini && m.gemini.moments && m.gemini.moments.length);
   const render = (text) => {
     if (text != null) msg = text;
     const sc = $('#fpScroll'), st = sc.scrollTop;
@@ -2977,10 +2978,10 @@ function findTab(m) {
     sc.innerHTML = bodyHtml();
     sc.scrollTop = st; if ($('#goalTimes')) $('#goalTimes').value = goalTxt;
     $('#fpBot').innerHTML = `<p class="note" id="sfMsg">${esc(msg)}</p>
-      <div class="fpBtns">${busy ? '<button class="ghost" id="sfStop">Stop</button>' : `<button class="ghost" id="sfGo">${cands.length ? 'Work it out again' : 'Work out the goals'}</button>`}
-      <button class="primary" id="sfAdd" ${cands.length ? '' : 'hidden'}></button></div>`;
+      <div class="fpBtns">${busy ? '<button class="ghost" id="sfStop">Stop</button>' : `<button class="ghost" id="sfGo">${cands.length ? 'Search again' : 'Search for highlights'}</button>`}
+      <button class="primary" id="sfAdd" ${cands.length || hasMoms() ? '' : 'hidden'}></button></div>`;
     $$('details.sec', sc).forEach(d => d.ontoggle = () => { S.open[d.dataset.k] = d.open; });
-    wireSec(); if (cands.length) drawCands();
+    wireSec(); if (cands.length || hasMoms()) drawCands();
   };
   S.refresh = () => render();
   const setMsg = t => { msg = t; const e = $('#sfMsg'); if (e) e.textContent = t; };
@@ -3078,11 +3079,11 @@ function findTab(m) {
   function combine(prefix) {
     const a = parseInt($('#sfUs').value, 10), b = parseInt($('#sfThem').value, 10);
     const known = a >= 0 && b >= 0 ? a + b : null;
-    if (known === 0) return render('0–0, so there are no goals to find.');
+    if (known === 0) { cands = []; picks = new Set(); m.finalUs = 0; m.finalThem = 0; DB.saveMatch(m); return render(hasMoms() ? `${prefix ? prefix + ' ' : ''}0–0, so there are no goals. The other highlights are below.` : '0–0, so there are no goals. Use Ask Gemini to search for other highlights.'); }
     if (known != null) { m.finalUs = a; m.finalThem = b; DB.saveMatch(m); }
     const { ev, notes } = evidenceFor(m, known);
-    if (!ev.length) return render('There is no evidence yet. Try Ask Gemini, the crowd noise scan, the ball tracker or one of the Listen buttons first.');
-    cands = fuse(ev, { n: known });
+    if (!ev.length && !hasMoms()) return render('There is no evidence yet. Try Ask Gemini, the crowd noise scan, the ball tracker or one of the Listen buttons first.');
+    cands = ev.length ? fuse(ev, { n: known }) : [];
     picks = new Set(); cands.forEach((c, i) => { if (c.picked) picks.add(i); });
     const names = { crowd: 'crowd noise', board: 'scoreboard', ball: 'ball', cheer: 'cheering', speech: 'speech', gemini: 'Gemini' };
     render(`${prefix ? prefix + ' ' : ''}Used: ${Object.keys(notes).map(k => names[k] || k).join(', ')}.${known != null ? ` Kept the ${known} most likely, for a final score of ${a}–${b}.` : ' Without the final score it keeps only the strongest.'}`);
@@ -3092,13 +3093,16 @@ function findTab(m) {
     const rows = cands.map((c, i) => [c, i]).sort((x, y) => (y[0].picked - x[0].picked) || (x[0].time - y[0].time));
     $('#sfList').innerHTML = rows.map(([c, i]) => `<label class="cand big"><input type="checkbox" data-i="${i}" ${picks.has(i) ? 'checked' : ''}>
       <b>${clock(c.time)}</b><span class="chips">${c.evidence.map(e => `<i class="chip">${esc(e.label)}</i>`).join('')}</span><em>${Math.round(c.score * 100)}%</em></label>`).join('')
-      + (m.gemini && m.gemini.moments && m.gemini.moments.length ? `<label class="chk extra"><input type="checkbox" id="sfMoms" checked><span>Also add the ${m.gemini.moments.length} shots, saves, corners and fouls Gemini found (guesses, so check them)</span></label>` : '');
+      + (m.gemini && m.gemini.moments && m.gemini.moments.length ? `<label class="chk extra"><input type="checkbox" id="sfMoms" checked><span>Also add the ${m.gemini.moments.length} other highlights Gemini found: shots, saves, corners, cards and plain highlights (guesses, so check them)</span></label>` : '');
     $$('#sfList input[data-i]').forEach(cb => cb.onchange = () => { cb.checked ? picks.add(+cb.dataset.i) : picks.delete(+cb.dataset.i); upd(); });
+    const mc = $('#sfMoms'); if (mc) mc.onchange = upd;
     upd();
   }
   function upd() {
-    const b = $('#sfAdd'); if (!b || !cands.length) return;
-    b.hidden = false; b.disabled = !picks.size; b.textContent = picks.size ? `Add ${picks.size} goal${picks.size === 1 ? '' : 's'} & review` : 'Tick the goals to add';
+    const b = $('#sfAdd'); if (!b || (!cands.length && !hasMoms())) return;
+    const mo0 = $('#sfMoms'), mom = !!(mo0 && mo0.checked);
+    b.hidden = false; b.disabled = !picks.size && !mom;
+    b.textContent = picks.size ? `Add ${picks.size} goal${picks.size === 1 ? '' : 's'}${mom ? ' + highlights' : ''} & review` : mom ? 'Add highlights & review' : 'Tick what to add';
     b.onclick = async () => {
       [...picks].sort((x, y) => cands[x].time - cands[y].time).forEach(i => addGoalAt(m, cands[i].time, cands[i].side));
       const mo = $('#sfMoms'); if (mo && mo.checked && m.gemini && m.gemini.moments) addMomentsFrom(m, m.gemini.moments);

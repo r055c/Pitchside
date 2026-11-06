@@ -1,6 +1,6 @@
 // Pitchside service worker: caches the app shell so it opens offline.
 // Bump CACHE when you change any file, so installed copies pick up the update.
-const CACHE = 'pitchside-202611061052';
+const CACHE = 'pitchside-202611061227';
 const KEEP = 'pitchside-keep'; // holds the ball model and the ONNX files; survives updates
 const SHELL = ['./', 'index.html', 'css/app.css', 'js/app.js', 'js/analysis.js', 'js/db.js', 'js/export.js', 'js/ball.js',
   'manifest.webmanifest', 'icons/icon-192.png', 'icons/icon-512.png', 'icons/icon-maskable-512.png', 'icons/apple-touch-icon.png'];
