@@ -341,3 +341,9 @@ a.dl{display:flex;align-items:center;justify-content:center;gap:8px;text-decorat
 .rvAdd .full{flex:1 1 100%}
 .ws-review .wsL{position:static;max-height:none;overflow:visible}
 .ws-review .wsR{position:sticky;top:80px}
+
+.clockbox summary{cursor:pointer;font-weight:700}
+.clockbox{display:flex;flex-direction:column;gap:8px}
+.kos{display:flex;gap:8px;align-items:flex-end}
+.kos label{flex:1;display:flex;flex-direction:column;gap:4px;font-size:13px;font-weight:700}
+.linkbtn{background:none;border:0;padding:0;color:inherit;text-decoration:underline;font:inherit;font-weight:700;min-height:0;cursor:pointer}

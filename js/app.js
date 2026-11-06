@@ -50,9 +50,12 @@ const TYPES = {
   corner: { label: 'Corner won', ch: 'C' },
   save: { label: 'Save by keeper', ch: 'K' },
   foul: { label: 'Foul committed', ch: 'F' },
+  yellow: { label: 'Yellow card', ch: 'Y' },
+  red: { label: 'Red card', ch: 'R' },
+  highlight: { label: 'Highlight (no stat)', ch: 'H' },
 };
 function stats(m) {
-  const z = () => ({ goals: 0, shots: 0, sot: 0, corners: 0, saves: 0, fouls: 0 });
+  const z = () => ({ goals: 0, shots: 0, sot: 0, corners: 0, saves: 0, fouls: 0, yellow: 0, red: 0 });
   const r = { us: z(), them: z() };
   for (const e of m.events || []) {
     if (!e.type || e.type === 'skip' || !e.side) continue;
@@ -63,6 +66,8 @@ function stats(m) {
     else if (e.type === 'corner') a.corners++;
     else if (e.type === 'save') { a.saves++; b.shots++; b.sot++; }   // a save implies a shot on target by the other side
     else if (e.type === 'foul') a.fouls++;
+    else if (e.type === 'yellow') a.yellow++;
+    else if (e.type === 'red') a.red++;
   }
   return r;
 }
@@ -299,6 +304,11 @@ function videoTab(m) {
     <div class="fld"><span>Final score (optional)</span><div class="fs"><label>${esc(m ? m.us : 'Your team')}<input name="fu" type="number" inputmode="numeric" min="0" max="30" value="${m && m.finalUs != null ? m.finalUs : ''}"></label>
       <label>${esc(m ? m.them : 'Opponent')}<input name="ft" type="number" inputmode="numeric" min="0" max="30" value="${m && m.finalThem != null ? m.finalThem : ''}"></label></div>
       <small>If you know it, Gemini and the other clues use it to check they have found every goal.</small></div>
+    <details class="fld clockbox" ${m && m.ko1 != null ? 'open' : ''}><summary>Match clock (optional)</summary>
+      <small>Lets the stats graphic show when each goal happened, like 12&prime;. Play the video to the kick-off, then press the button beside it.</small>
+      <div class="kos"><label>First half kicks off at<input name="ko1" value="${m && m.ko1 != null ? clock(m.ko1) : ''}" placeholder="0:30" inputmode="numeric"></label><button type="button" class="ghost sm" data-ko="ko1">Use video time</button></div>
+      <div class="kos"><label>Second half kicks off at<input name="ko2" value="${m && m.ko2 != null ? clock(m.ko2) : ''}" placeholder="32:10" inputmode="numeric"></label><button type="button" class="ghost sm" data-ko="ko2">Use video time</button></div>
+      <div class="kos"><label>Length of each half (minutes)<input name="half" type="number" min="10" max="60" inputmode="numeric" value="${m && m.halfLen ? m.halfLen : 45}"></label></div></details>
     <div class="fld"><span>Match video</span>
       <label class="filebtn"><input type="file" id="vf" accept="video/*" hidden><span id="vfName">${has ? esc(S.file.name) : (m && m.video ? 'Choose the video again: ' + esc(m.video.name) : 'Choose video&hellip;')}</span></label>
       <small>It stays on this computer unless you choose Ask Gemini in the next step, which uploads it to Google and deletes it afterwards.</small></div>
@@ -311,6 +321,10 @@ function videoTab(m) {
     previewUrl = URL.createObjectURL(f);
     $('#vprev').innerHTML = `<video controls playsinline preload="metadata" src="${previewUrl}"></video>`;
   };
+  $$('[data-ko]').forEach(b => b.onclick = () => {
+    const v = $('#vprev video'); if (!v) return toast('Choose the video first');
+    $(`input[name=${b.dataset.ko}]`).value = clock(v.currentTime);
+  });
   $('#vf').onchange = e => {
     file = e.target.files[0] || null;
     if (!file) return;
@@ -321,6 +335,8 @@ function videoTab(m) {
     ev.preventDefault();
     const f = new FormData(ev.target), btn = $('#nfGo');
     const fu = parseInt(f.get('fu'), 10), ft = parseInt(f.get('ft'), 10), haveFinal = fu >= 0 && ft >= 0;
+    const k1 = parseClockTime(String(f.get('ko1') || '').trim()), k2 = parseClockTime(String(f.get('ko2') || '').trim()), hl = parseInt(f.get('half'), 10);
+    const clk = o => { o.ko1 = k1 != null ? k1 : null; o.ko2 = k1 != null && k2 != null && k2 > k1 ? k2 : null; o.halfLen = hl >= 10 && hl <= 60 ? hl : 45; };
     if (isNew) {
       if (!file) return toast('Choose the match video first');
       btn.disabled = true; btn.textContent = 'Reading video…';
@@ -329,12 +345,12 @@ function videoTab(m) {
       const nm = { id: DB.newId(), us: f.get('us').trim(), them: f.get('them').trim(), date: f.get('date'), attackDir: dir, halfTime: 0, createdAt: Date.now(),
         video: { name: file.name, size: file.size, duration: info.duration }, events: [], duration: info.duration, half: info.duration / 2, curves: null, raw: null,
         finalUs: haveFinal ? fu : null, finalThem: haveFinal ? ft : null };
-      lsSet('ps_us', nm.us); lsSet('ps_dir', dir);
+      clk(nm); lsSet('ps_us', nm.us); lsSet('ps_dir', dir);
       await DB.saveMatch(nm); setFile(nm, file);
       return go(`#/match/${nm.id}/find`);
     }
     m.us = f.get('us').trim(); m.them = f.get('them').trim(); m.date = f.get('date'); m.attackDir = dir;
-    m.finalUs = haveFinal ? fu : null; m.finalThem = haveFinal ? ft : null;
+    m.finalUs = haveFinal ? fu : null; m.finalThem = haveFinal ? ft : null; clk(m);
     if (file) {
       btn.disabled = true; btn.textContent = 'Reading video…';
       try { const info = await probeVideo(file); m.video = { name: file.name, size: file.size, duration: info.duration }; m.duration = info.duration; setFile(m, file); }
@@ -496,9 +512,9 @@ function addGoalAt(m, t, side) {
 function addMomentsFrom(m, list) {
   const dur = m.duration || 1e9;
   for (const x of list) {
-    if (!TYPES[x.type] || !x.side) continue;
+    if (!TYPES[x.type] || (!x.side && x.type !== 'highlight')) continue;
     if (m.events.some(e => e.type !== 'skip' && Math.abs(e.time - x.t) < 6 && (e.type === x.type || e.type === 'goal'))) continue;
-    m.events.push({ id: 0, time: x.t, start: Math.max(0, x.t - 5), end: Math.min(dur, x.t + 8), score: null, label: TYPES[x.type].label, type: x.type, side: x.side, manual: false, fromGemini: true });
+    m.events.push({ id: 0, time: x.t, start: Math.max(0, x.t - 5), end: Math.min(dur, x.t + 8), score: null, label: TYPES[x.type].label, type: x.type, side: x.side || null, manual: false, fromGemini: true });
   }
 }
 function finishEventEdit(m, selE) {
@@ -547,14 +563,31 @@ function clipsFor(m, mode) {
 }
 
 // ------------------------------------------------------------ step 3: review highlights
-const FILTERS = [['all', 'All'], ['goal', 'Goals'], ['shots', 'Shots'], ['save', 'Saves'], ['corner', 'Corners'], ['foul', 'Fouls']];
-const inFilter = (e, f) => f === 'all' || (f === 'shots' ? (e.type === 'sot' || e.type === 'off') : f === 'skipped' ? e.type === 'skip' : e.type === f);
+const FILTERS = [['all', 'All'], ['goal', 'Goals'], ['shots', 'Shots'], ['save', 'Saves'], ['corner', 'Corners'], ['foul', 'Fouls'], ['cards', 'Cards'], ['highlight', 'Highlights']];
+const inFilter = (e, f) => f === 'all' || (f === 'shots' ? (e.type === 'sot' || e.type === 'off') : f === 'cards' ? (e.type === 'yellow' || e.type === 'red') : f === 'skipped' ? e.type === 'skip' : e.type === f);
 function statRows(m) {
   const st = stats(m);
-  return [['Goals', st.us.goals, st.them.goals], ['Shots', st.us.shots, st.them.shots], ['Shots on target', st.us.sot, st.them.sot],
+  const rows = [['Goals', st.us.goals, st.them.goals], ['Shots', st.us.shots, st.them.shots], ['Shots on target', st.us.sot, st.them.sot],
     ['Saves', st.us.saves, st.them.saves], ['Corners', st.us.corners, st.them.corners], ['Fouls', st.us.fouls, st.them.fouls]];
+  if (st.us.yellow + st.them.yellow) rows.push(['Yellow cards', st.us.yellow, st.them.yellow]);   // cards are rare, so only shown when there are some
+  if (st.us.red + st.them.red) rows.push(['Red cards', st.us.red, st.them.red]);
+  return rows;
 }
-const statsData = m => ({ us: m.us, them: m.them, rows: statRows(m), title: 'MATCH STATS', sub: `${m.us} v ${m.them} · ${fmtDate(m.date)}` });
+// match minute from the optional kick-off times (video seconds) on the Video step
+function minuteLabel(m, t) {
+  if (m.ko1 == null) return null;
+  const h = m.halfLen || 45;
+  if (m.ko2 != null && t >= m.ko2) { const n = h + Math.floor((t - m.ko2) / 60) + 1; return n > 2 * h ? `${2 * h}+${n - 2 * h}\u2032` : `${n}\u2032`; }
+  const n = Math.max(1, Math.floor((t - m.ko1) / 60) + 1);
+  return m.ko2 != null && n > h ? `${h}+${n - h}\u2032` : `${n}\u2032`;
+}
+function scorersOf(m) {
+  if (m.ko1 == null) return null;
+  const by = side => (m.events || []).filter(e => e.type === 'goal' && e.side === side).sort((x, y) => x.time - y.time).map(e => minuteLabel(m, e.time));
+  const us = by('us'), them = by('them');
+  return us.length || them.length ? { us, them } : null;
+}
+const statsData = m => ({ us: m.us, them: m.them, rows: statRows(m), scorers: scorersOf(m), title: 'MATCH STATS', sub: `${m.us} v ${m.them} · ${fmtDate(m.date)}` });
 function drawStatsCanvas(m) { const cv = $('#statsCv'); if (cv) drawStats(cv.getContext('2d'), cv.width, cv.height, statsData(m), 1); }
 function saveStatsPicture(m) {
   const cv = document.createElement('canvas'); cv.width = 1600; cv.height = 800;
@@ -570,7 +603,7 @@ function hlRow(m, e) {
   const sel = S.sel === e.id, T = TYPES[e.type], skipped = e.type === 'skip';
   const who = e.side ? esc(e.side === 'us' ? m.us : m.them) : '';
   const head = `<button class="hlHead" data-act="sel" aria-expanded="${sel}"><span class="dot ${e.side || 'none'}"></span><b>${clock(e.time)}</b>
-    <span class="hlType">${skipped ? 'Skipped' : T ? T.label : 'Pick what happened'}</span><span class="hlWho">${who || (skipped ? '' : 'Who?')}</span></button>`;
+    <span class="hlType">${skipped ? 'Skipped' : T ? T.label : 'Pick what happened'}</span><span class="hlWho">${who || (skipped || e.type === 'highlight' ? '' : 'Who?')}</span></button>`;
   const body = !sel ? '' : skipped ? `<div class="hlBody"><div class="hlBtns"><button class="ghost sm" data-act="skip">Restore this highlight</button></div></div>` : `<div class="hlBody">
       <div class="hlRow"><label>What happened<select data-act="type"><option value="">Pick…</option>${Object.entries(TYPES).map(([k, t]) => `<option value="${k}" ${e.type === k ? 'selected' : ''}>${t.label}</option>`).join('')}</select></label>
         <div class="who"><span>Who</span><div class="seg sm" data-act="side"><button data-side="us" class="${e.side === 'us' ? 'on' : ''}">${esc(m.us)}</button><button data-side="them" class="${e.side === 'them' ? 'on' : ''}">${esc(m.them)}</button></div></div></div>
@@ -595,6 +628,9 @@ function renderReview(m) {
   $('#rvHead').innerHTML = `<div class="rvScore"><span class="us">${esc(m.us)}</span><b class="us">${st.us.goals}</b><i>–</i><b class="them">${st.them.goals}</b><span class="them">${esc(m.them)}</span></div>
     <small>${hlList(m).length} highlight${hlList(m).length === 1 ? '' : 's'} found${fin ? ` · final score you entered ${m.finalUs}–${m.finalThem}` : ''}${open ? ` · ${open} goal${open === 1 ? ' needs' : 's need'} a team picking` : ''}</small>
     ${mismatch ? `<div class="notice sm">The goals here (${st.us.goals}–${st.them.goals}) don&rsquo;t match the final score you entered. A goal may be missing or wrong.</div>` : ''}`;
+  const gs = (m.events || []).filter(e => e.fromGemini && (e.type === 'sot' || e.type === 'off')).length;
+  $('#rvTools').innerHTML = gs ? `<div class="notice sm">Gemini guessed ${gs} shot${gs === 1 ? '' : 's'}. If many are not really shots, <button class="linkbtn" id="shots2hl">turn them into plain highlights</button> (they stay in the video but stop counting as shots).</div>` : '';
+  const sb = $('#shots2hl'); if (sb) sb.onclick = () => { for (const e of m.events) if (e.fromGemini && (e.type === 'sot' || e.type === 'off')) { e.type = 'highlight'; e.label = TYPES.highlight.label; } finishEventEdit(m); toast('Done. Change any real shots back with the dropdown.'); };
   drawMarks(m); drawStatsCanvas(m); updateCount(m);
 }
 function reviewTab(m) {
@@ -604,7 +640,7 @@ function reviewTab(m) {
       <canvas id="statsCv" width="1280" height="640" role="img" aria-label="Team stats comparison"></canvas>
       <label class="chk"><input type="checkbox" id="statsEnd" ${m.statsEnd ? 'checked' : ''}><span>Add this graphic to the end of the highlights video</span></label></section>
     ${hasCurves ? `<details class="card flowbox"><summary>Match flow</summary><div id="chart" class="chart">${flowChart(m)}</div><p class="note">Estimated share of the play, from camera movement and crowd noise. Click a marker to jump to it.</p></details>` : ''}`;
-  const right = `<div class="rv"><div class="rvHeadWrap" id="rvHead"></div><div class="chips2" id="rvChips"></div><div class="rvList" id="rvList"></div>
+  const right = `<div class="rv"><div class="rvHeadWrap" id="rvHead"></div><div class="chips2" id="rvChips"></div><div id="rvTools"></div><div class="rvList" id="rvList"></div>
     <div class="rvFoot"><div class="rvAdd"><button class="ghost sm full" id="addHl" ${haveFile(m) ? '' : 'disabled'}>+ Add a highlight at the current time</button>
       <button class="ghost sm" id="playReel" ${haveFile(m) ? '' : 'disabled'}>&#9654; Play all</button><button class="ghost sm" id="goalUs" ${haveFile(m) ? '' : 'disabled'}>Goal: ${esc(m.us)}</button><button class="ghost sm" id="goalThem" ${haveFile(m) ? '' : 'disabled'}>Goal: ${esc(m.them)}</button></div>
       <a class="primary" href="#/match/${m.id}/export">Next: export</a></div></div>`;
@@ -655,7 +691,7 @@ function reviewTab(m) {
     const t = ev.target, row = t.closest('.hl'); if (!row) return;
     const e = m.events.find(x => x.id === +row.dataset.id); if (!e) return;
     if (t.matches('select[data-act="type"]')) {
-      e.type = t.value || null; if (e.type) { e.label = TYPES[e.type].label; if (!e.side) e.side = 'us'; } else e.side = null;
+      e.type = t.value || null; if (e.type) { e.label = TYPES[e.type].label; if (!e.side && e.type !== 'highlight') e.side = 'us'; } else e.side = null;
       e.guess = false; return finishEventEdit(m, e);
     }
     if (t.matches('input[data-act="start"], input[data-act="end"]')) {
@@ -970,7 +1006,7 @@ function findTab(m) {
           moments = mr.result;
         } catch (err) { if (ctrl.signal.aborted) throw err; momNote = ' The shots, saves, corners and fouls could not be checked this time.'; }
       }
-      m.gemini = { model: G.model, at: Date.now(), goals: r.goals.map(g => ({ t: g.t, side: g.side, conf: g.conf, note: g.note, fine: !!g.fine, unsure: !!g.unsure, gap: !!g.gap })), warnings: r.warnings, moments: moments.filter(x => x.side) };
+      m.gemini = { model: G.model, at: Date.now(), goals: r.goals.map(g => ({ t: g.t, side: g.side, conf: g.conf, note: g.note, fine: !!g.fine, unsure: !!g.unsure, gap: !!g.gap })), warnings: r.warnings, moments: moments.filter(x => x.side || x.type === 'highlight') };
       await DB.saveMatch(m);
       busy = false;
       combine(`${G.model} listed ${r.goals.length} goal${r.goals.length === 1 ? '' : 's'}: ${r.goals.map(g => clock(g.t) + (g.fine ? '' : '?')).join(', ') || 'none'}${moments.length ? `, plus ${moments.length} other highlights` : ''}.${momNote}`);

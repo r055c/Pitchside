@@ -302,18 +302,23 @@ export async function geminiGoals(auth, model, file, { us, them, duration, final
 }
 
 // ================= other moments (shots, saves, corners, fouls) =================
-const MOMENT_TYPES = { shot_on_target: 'sot', shot_off_target: 'off', corner: 'corner', save: 'save', foul: 'foul' };
+const MOMENT_TYPES = { shot_on_target: 'sot', shot_off_target: 'off', corner: 'corner', save: 'save', foul: 'foul', yellow_card: 'yellow', red_card: 'red', highlight: 'highlight' };
 export async function geminiMoments(auth, model, file, { us, them, duration, sideOf = () => null, partSeconds = 600, onProgress = () => {}, signal } = {}) {
-  const schema = { type: T.OBJ, properties: { moments: { type: T.ARR, items: { type: T.OBJ, properties: { time_in_video: { type: T.STR }, kind: { type: T.STR }, team: { type: T.STR }, evidence: { type: T.STR } }, required: ['time_in_video', 'kind', 'team'] } } }, required: ['moments'] };
+  const schema = { type: T.OBJ, properties: { moments: { type: T.ARR, items: { type: T.OBJ, properties: { time_in_video: { type: T.STR }, kind: { type: T.STR }, team: { type: T.STR }, evidence: { type: T.STR }, confidence: { type: T.NUM } }, required: ['time_in_video', 'kind', 'team'] } } }, required: ['moments'] };
   const out = [];
   const parts = []; for (let a = 0; a < duration; a += partSeconds) parts.push([a, Math.min(duration, a + partSeconds)]);
   for (let i = 0; i < parts.length; i++) {
     const [a, b] = parts[i];
     const r = await ask(auth, model, file, { a, b, fps: 2, res: 'MEDIA_RESOLUTION_LOW', schema,
-      text: intro(us, them, a, b) + `List the main moments in this part, ignoring goals. Each has kind = one of: shot_on_target (a shot that would go in or is saved), shot_off_target (a shot that misses or is blocked), corner (a corner kick is awarded), save (the goalkeeper stops a shot), foul (a foul is given). ` +
-        `time_in_video = mm:ss on the video's own timeline counted from the very start of the whole video (NOT the match clock). team = exactly "${us}" or "${them}": the team that took the shot, won the corner, committed the foul, or whose goalkeeper made the save. evidence = a few words. Only include what you clearly see.` },
+      text: intro(us, them, a, b) + `List the notable moments in this part, ignoring goals. Each has kind = one of: ` +
+        `shot_on_target (a player deliberately strikes or heads the ball at goal and it is saved or would have gone in), ` +
+        `shot_off_target (a deliberate attempt to score that misses or is blocked), corner (a corner kick is awarded), save (the goalkeeper stops a shot), foul (a foul is given), ` +
+        `yellow_card or red_card (the referee shows that card), highlight (a good chance, near miss, great move or other moment worth watching that is NOT a shot). ` +
+        `A shot is ONLY a clear attempt to score. Crosses, passes, clearances, throw-ins, dribbles and balls that merely go near the goal are NOT shots. If you are not sure it was an attempt to score, use highlight. ` +
+        `time_in_video = mm:ss on the video's own timeline counted from the very start of the whole video (NOT the match clock). team = exactly "${us}" or "${them}": the team that took the shot, won the corner, committed the foul, was shown the card, made the move, or whose goalkeeper made the save. ` +
+        `confidence = 0 to 1 for how sure you are of the kind. evidence = a few words. Only include what you clearly see.` },
       { signal, onProgress, label: `Looking for shots, saves, corners and fouls in ${gmmss(a)}–${gmmss(b)} (part ${i + 1} of ${parts.length})…` });
-    let found = (r.moments || []).map(x => ({ t: parseClock(x.time_in_video), type: MOMENT_TYPES[String(x.kind || '').trim()], side: sideOf(String(x.team || '')), note: String(x.evidence || '').slice(0, 60) })).filter(x => x.t != null && x.type);
+    let found = (r.moments || []).map(x => { const c = typeof x.confidence === 'number' ? x.confidence : 0.7; let type = MOMENT_TYPES[String(x.kind || '').trim()]; if (type && type !== 'highlight' && type !== 'red' && type !== 'yellow' && c < 0.6) type = 'highlight'; return { t: parseClock(x.time_in_video), type, side: sideOf(String(x.team || '')), note: String(x.evidence || '').slice(0, 60), conf: c }; }).filter(x => x.t != null && x.type);
     if (a > 600 && found.length && found.every(g => g.t < a - 20)) found.forEach(g => { g.t += a; });
     out.push(...found.filter(g => g.t >= a - 10 && g.t <= b + 10));
   }

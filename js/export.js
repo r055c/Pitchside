@@ -43,7 +43,14 @@ export function drawStats(ctx, W, H, d, prog = 1) {
   badge(W - padX - r0, d.them, CLY); t(fit(d.them, 30), W - padX - r0 * 2 - f(18), hh / 2, 30, INK, 800, 'right');
   t(d.title || 'MATCH STATS', W / 2, hh / 2 - f(8), 22, '#F1B51C', 800, 'center');
   if (d.sub) t(d.sub, W / 2, hh / 2 + f(16), 16, MUT, 600, 'center');
-  const rows = d.rows || [], top = hh + f(24), avail = H - top - f(20), rh = avail / Math.max(1, rows.length);
+  let strip = 0;
+  if (d.scorers) {
+    strip = f(44); const sy = hh + f(4) + strip / 2 + f(6);
+    t(d.scorers.us.length ? d.scorers.us.join('  ') : '', padX, sy, 20, MUT, 700, 'left');
+    t('GOALS', W / 2, sy, 15, '#5E7066', 800, 'center');
+    t(d.scorers.them.length ? d.scorers.them.join('  ') : '', W - padX, sy, 20, MUT, 700, 'right');
+  }
+  const rows = d.rows || [], top = hh + f(24) + strip, avail = H - top - f(20), rh = avail / Math.max(1, rows.length);
   const bx0 = padX, bx1 = W - padX, bw = bx1 - bx0, bh = Math.max(f(8), rh * 0.11);
   rows.forEach(([label, a, b], i) => {
     const cy = top + rh * i + rh / 2;
