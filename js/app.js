@@ -48,6 +48,7 @@ const TYPES = {
   sot: { label: 'Shot on target', ch: 'S' },
   off: { label: 'Shot off target', ch: 'S', hollow: true },
   corner: { label: 'Corner won', ch: 'C' },
+  kickin: { label: 'Kick-in', ch: 'K' },
   save: { label: 'Save by keeper', ch: 'K' },
   foul: { label: 'Foul committed', ch: 'F' },
   yellow: { label: 'Yellow card', ch: 'Y' },
@@ -55,7 +56,7 @@ const TYPES = {
   highlight: { label: 'Highlight (no stat)', ch: 'H' },
 };
 function stats(m) {
-  const z = () => ({ goals: 0, shots: 0, sot: 0, corners: 0, saves: 0, fouls: 0, yellow: 0, red: 0 });
+  const z = () => ({ goals: 0, shots: 0, sot: 0, corners: 0, kickins: 0, saves: 0, fouls: 0, yellow: 0, red: 0 });
   const r = { us: z(), them: z() };
   for (const e of m.events || []) {
     if (!e.type || e.type === 'skip' || !e.side) continue;
@@ -64,6 +65,7 @@ function stats(m) {
     else if (e.type === 'sot') { a.shots++; a.sot++; }
     else if (e.type === 'off') a.shots++;
     else if (e.type === 'corner') a.corners++;
+    else if (e.type === 'kickin') a.kickins++;
     else if (e.type === 'save') { a.saves++; b.shots++; b.sot++; }   // a save implies a shot on target by the other side
     else if (e.type === 'foul') a.fouls++;
     else if (e.type === 'yellow') a.yellow++;
@@ -109,7 +111,7 @@ function matchCsv(m) {
   const out = [row('Match', `${m.us} v ${m.them}`), row('Date', m.date || ''),
     row('Score (from tagged goals)', `${st.us.goals}-${st.them.goals}`), '', row('Stat', m.us, m.them),
     row('Goals', st.us.goals, st.them.goals), row('Shots', st.us.shots, st.them.shots), row('Shots on target', st.us.sot, st.them.sot),
-    row('Corners', st.us.corners, st.them.corners), row('Saves', st.us.saves, st.them.saves), row('Fouls', st.us.fouls, st.them.fouls), '',
+    row('Corners', st.us.corners, st.them.corners), row('Saves', st.us.saves, st.them.saves), row('Fouls', st.us.fouls, st.them.fouls), row('Kick-ins', st.us.kickins, st.them.kickins), '',
     row('Video time', 'Event', 'Team', 'Score after')];
   const ev = (m.events || []).filter(e => e.type && e.type !== 'skip').sort((a, b) => a.time - b.time);
   for (const e of ev) {
@@ -198,13 +200,13 @@ function help() {
     <section class="card"><h3>The idea</h3><p>Pitchside has four steps along the top: <b>Video</b>, <b>Find highlights</b>, <b>Review highlights</b> and <b>Export</b>. It builds the stats, the match graphic and the highlights video from the highlights you confirm.</p></section>
     <section class="card"><h3>Using it</h3><ol>
       <li><b>Video</b>: names, date, which way you attack, the final score if you know it, and the match recording.</li>
-      <li><b>Find highlights</b>: the best option is <b>Gemini</b>, Google&rsquo;s AI, which watches the match and lists the goals (and, if you ask, shots, saves, corners and fouls). Other options listen to the crowd and whistles, follow the ball or read the scoreboard. Each one can be opened or closed.</li>
+      <li><b>Find highlights</b>: the best option is <b>Gemini</b>, Google&rsquo;s AI, which watches the match and lists the goals (and, if you ask, shots, saves, corners, kick-ins and fouls). Other options listen to the crowd and whistles, follow the ball or read the scoreboard. Each one can be opened or closed.</li>
       <li><b>Review highlights</b>: watch each one, fix who it was for, trim the clip, or skip it. The Sky-style stats graphic updates as you go.</li>
       <li><b>Export</b>: goals only or all highlights, with or without a scoreboard, then make the video.</li></ol></section>
     <section class="card"><h3>Good to know</h3><ul>
       <li>Your video stays on your computer unless you choose <b>Ask Gemini</b>, which uploads it to Google using your key and deletes it again afterwards.</li>
       <li>Highlights, tags and scan results are saved on this device. After you close the app, pick the video file again to watch clips.</li>
-      <li>Gemini&rsquo;s shots, saves, corners and fouls are guesses, so check them in Review.</li>
+      <li>Gemini&rsquo;s shots, saves, corners, kick-ins and fouls are guesses, so check them in Review.</li>
       <li>Use Chrome or Edge on a computer. The video export plays the clips in real time, so a 3 minute video takes about 3 minutes.</li>
       <li>Works offline once opened (except Gemini).</li></ul></section>
   </main>`;
@@ -476,7 +478,7 @@ function flowChart(m) {
 
 function reelList(m) {
   const tagged = m.events.filter(e => e.type && e.type !== 'skip');
-  const base = tagged.length ? tagged.filter(e => e.type !== 'foul') : m.events.filter(e => e.type !== 'skip');
+  const base = tagged.length ? tagged.filter(e => e.type !== 'foul' && e.type !== 'kickin') : m.events.filter(e => e.type !== 'skip');
   return [...base].sort((a, b) => a.time - b.time);
 }
 
@@ -540,7 +542,7 @@ function addGoalsFromText(m) {
 
 function clipsFor(m, mode) {
   const pre = m.preGoal ?? 10, post = m.postGoal ?? 10, dur = m.duration || 1e9;
-  let list = m.events.filter(e => e.type && e.type !== 'skip' && e.type !== 'foul' && TYPES[e.type]).sort((a, b) => a.time - b.time);
+  let list = m.events.filter(e => e.type && e.type !== 'skip' && e.type !== 'foul' && e.type !== 'kickin' && TYPES[e.type]).sort((a, b) => a.time - b.time);
   if (mode === 'goals') list = list.filter(e => e.type === 'goal');
   const clips = list.map(e => {
     if (e.type === 'goal') {
@@ -563,12 +565,13 @@ function clipsFor(m, mode) {
 }
 
 // ------------------------------------------------------------ step 3: review highlights
-const FILTERS = [['all', 'All'], ['goal', 'Goals'], ['shots', 'Shots'], ['save', 'Saves'], ['corner', 'Corners'], ['foul', 'Fouls'], ['cards', 'Cards'], ['highlight', 'Highlights']];
+const FILTERS = [['all', 'All'], ['goal', 'Goals'], ['shots', 'Shots'], ['save', 'Saves'], ['corner', 'Corners'], ['kickin', 'Kick-ins'], ['foul', 'Fouls'], ['cards', 'Cards'], ['highlight', 'Highlights']];
 const inFilter = (e, f) => f === 'all' || (f === 'shots' ? (e.type === 'sot' || e.type === 'off') : f === 'cards' ? (e.type === 'yellow' || e.type === 'red') : f === 'skipped' ? e.type === 'skip' : e.type === f);
 function statRows(m) {
   const st = stats(m);
   const rows = [['Goals', st.us.goals, st.them.goals], ['Shots', st.us.shots, st.them.shots], ['Shots on target', st.us.sot, st.them.sot],
     ['Saves', st.us.saves, st.them.saves], ['Corners', st.us.corners, st.them.corners], ['Fouls', st.us.fouls, st.them.fouls]];
+  if (st.us.kickins + st.them.kickins) rows.push(['Kick-ins', st.us.kickins, st.them.kickins]);
   if (st.us.yellow + st.them.yellow) rows.push(['Yellow cards', st.us.yellow, st.them.yellow]);   // cards are rare, so only shown when there are some
   if (st.us.red + st.them.red) rows.push(['Red cards', st.us.red, st.them.red]);
   return rows;
@@ -879,7 +882,7 @@ function findTab(m) {
       <div class="gem"><input id="gKey" type="password" autocomplete="off" spellcheck="false" placeholder="${GPROXY ? 'Access code (if you were given one)' : 'Paste your Gemini key'}" value="${esc(keyVal)}">
       ${G.models ? `<label class="fld"><span>Start with this model (it switches to the next one if it is busy or out of free requests)</span><select id="gModel">${G.models.map(x => `<option value="${esc(x.name)}" ${x.name === G.model ? 'selected' : ''}>${esc(x.name)}</option>`).join('')}</select></label>` : ''}
       <label class="chk"><input type="checkbox" id="gOk" ${G.ok ? 'checked' : ''}><span>I&rsquo;m happy for this video to be uploaded to Google with my key. (Google may use free-tier uploads to improve its products, so avoid footage you should not share, such as other people&rsquo;s children.)</span></label>
-      <label class="chk"><input type="checkbox" id="gExtra" ${G.extra ? 'checked' : ''}><span>Also look for shots, saves, corners and fouls (slower, and they are guesses to check)</span></label>
+      <label class="chk"><input type="checkbox" id="gExtra" ${G.extra ? 'checked' : ''}><span>Also look for shots, saves, corners, kick-ins and fouls (slower, and they are guesses to check)</span></label>
       <label class="chk"><input type="checkbox" id="gRem" ${G.rem ? 'checked' : ''}><span>Remember ${GPROXY ? 'the access code' : 'the key'} on this device</span></label>
       <div class="gbtns"><button class="ghost" id="sfGem" ${busy ? 'disabled' : ''}>${gem ? 'Ask again' : 'Ask Gemini'}</button><button class="ghost" id="gForget" ${keyVal && !busy ? '' : 'hidden'}>Forget ${GPROXY ? 'code' : 'key'}</button></div></div>`) +
     sec('ball', 'Track the ball', 'Beta', m.ballTrack ? 'Done' : '', `
@@ -1005,7 +1008,7 @@ function findTab(m) {
         try {
           const mr = await withModels([G.model, ...names.filter(n => n !== G.model)], name => geminiMoments(auth, name, up, { ...common, onProgress: t => setMsg(`${name}: ${t}`) }), { signal: ctrl.signal, onSwitch });
           moments = mr.result;
-        } catch (err) { if (ctrl.signal.aborted) throw err; momNote = ' The shots, saves, corners and fouls could not be checked this time.'; }
+        } catch (err) { if (ctrl.signal.aborted) throw err; momNote = ' The shots, saves, corners, kick-ins and fouls could not be checked this time.'; }
       }
       m.gemini = { model: G.model, at: Date.now(), goals: r.goals.map(g => ({ t: g.t, side: g.side, conf: g.conf, note: g.note, fine: !!g.fine, unsure: !!g.unsure, gap: !!g.gap })), warnings: r.warnings, moments: moments.filter(x => x.side || x.type === 'highlight') };
       await DB.saveMatch(m);
