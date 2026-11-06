@@ -3,7 +3,7 @@ import { scanVideo, probeVideo, processSignals, findGoals, findScoreChanges, sna
 import { makeHighlightsVideo, pickMime, drawStats } from './export.js';
 import { loadBallSession, scanBall, hasWebGPU, cleanTrack, suggestZones, findCandidates } from './ball.js';
 import { fuse, soundEvents, speechEvents, geminiEvents, SOURCES } from './fuse.js';
-import { listModels, uploadVideo, deleteUpload, geminiGoals, geminiMoments } from './gemini.js';
+import { listModels, uploadVideo, deleteUpload, geminiGoals, geminiMoments, withModels, restingModels, KIND_TEXT } from './gemini.js';
 import { loadYamnet, scanSound, getYamnetBuffer, keepYamnet } from './sound.js';
 import { loadWhisper, scanSpeech } from './speech.js';
 import { audioSupported } from './audio.js';
@@ -839,8 +839,9 @@ function findTab(m) {
     sec('gemini', 'Ask Gemini', 'Recommended', gem ? `${gem.goals.length} goal${gem.goals.length === 1 ? '' : 's'}` : '', `
       <p class="note">${gem ? `Done: Gemini found ${gem.goals.length} goal${gem.goals.length === 1 ? '' : 's'} (${esc(gem.model)}).` : `Gemini is Google&rsquo;s AI. It watches the whole match, lists the goals, then takes a closer look at each one. ${GPROXY ? '' : 'Get a free key at <a href="https://aistudio.google.com/apikey" target="_blank" rel="noopener">aistudio.google.com/apikey</a>.'}`}</p>
       ${gem && gem.warnings && gem.warnings.length ? `<ul class="gemw">${gem.warnings.map(w => `<li>${esc(w)}</li>`).join('')}</ul>` : ''}
+      ${(() => { const r = restingModels().filter(x => G.models ? G.models.some(y => y.name === x.name) : true); return r.length ? `<p class="note">Skipped for now: ${r.map(x => `${esc(x.name)} (${KIND_TEXT[x.kind]})`).join(', ')}.</p>` : ''; })()}
       <div class="gem"><input id="gKey" type="password" autocomplete="off" spellcheck="false" placeholder="${GPROXY ? 'Access code (if you were given one)' : 'Paste your Gemini key'}" value="${esc(keyVal)}">
-      ${G.models ? `<select id="gModel">${G.models.map(x => `<option value="${esc(x.name)}" ${x.name === G.model ? 'selected' : ''}>${esc(x.name)}</option>`).join('')}</select>` : ''}
+      ${G.models ? `<label class="fld"><span>Start with this model (it switches to the next one if it is busy or out of free requests)</span><select id="gModel">${G.models.map(x => `<option value="${esc(x.name)}" ${x.name === G.model ? 'selected' : ''}>${esc(x.name)}</option>`).join('')}</select></label>` : ''}
       <label class="chk"><input type="checkbox" id="gOk" ${G.ok ? 'checked' : ''}><span>I&rsquo;m happy for this video to be uploaded to Google with my key. (Google may use free-tier uploads to improve its products, so avoid footage you should not share, such as other people&rsquo;s children.)</span></label>
       <label class="chk"><input type="checkbox" id="gExtra" ${G.extra ? 'checked' : ''}><span>Also look for shots, saves, corners and fouls (slower, and they are guesses to check)</span></label>
       <label class="chk"><input type="checkbox" id="gRem" ${G.rem ? 'checked' : ''}><span>Remember ${GPROXY ? 'the access code' : 'the key'} on this device</span></label>
@@ -957,13 +958,22 @@ function findTab(m) {
       setMsg('Uploading the video to Google… 0%');
       up = await uploadVideo(auth, S.file, { signal: ctrl.signal, onProgress: f => setMsg(`Uploading the video to Google… ${Math.round(f * 100)}% (a 200 MB match can take several minutes)`) });
       const sideOf = t => sideFromText(m, t);
-      const r = await geminiGoals(auth, G.model, up, { us: m.us, them: m.them, duration: dur, finalUs: haveFinal ? fa : null, finalThem: haveFinal ? fb : null, sideOf, signal: ctrl.signal, onProgress: t => setMsg(t) });
-      let moments = [];
-      if (G.extra) moments = await geminiMoments(auth, G.model, up, { us: m.us, them: m.them, duration: dur, sideOf, signal: ctrl.signal, onProgress: t => setMsg(t) });
+      const names = [G.model, ...G.models.map(x => x.name).filter(n => n !== G.model)];
+      const onSwitch = (name, kind, next) => setMsg(`${name} is ${KIND_TEXT[kind]}. ${next ? 'Trying ' + next + '…' : 'No other models left to try.'}`);
+      const common = { us: m.us, them: m.them, duration: dur, sideOf, signal: ctrl.signal };
+      const gr = await withModels(names, name => geminiGoals(auth, name, up, { ...common, finalUs: haveFinal ? fa : null, finalThem: haveFinal ? fb : null, onProgress: t => setMsg(`${name}: ${t}`) }), { signal: ctrl.signal, onSwitch });
+      const r = gr.result; G.model = gr.model; lsSet('ps_gemini_model', G.model);
+      let moments = [], momNote = '';
+      if (G.extra) {
+        try {
+          const mr = await withModels([G.model, ...names.filter(n => n !== G.model)], name => geminiMoments(auth, name, up, { ...common, onProgress: t => setMsg(`${name}: ${t}`) }), { signal: ctrl.signal, onSwitch });
+          moments = mr.result;
+        } catch (err) { if (ctrl.signal.aborted) throw err; momNote = ' The shots, saves, corners and fouls could not be checked this time.'; }
+      }
       m.gemini = { model: G.model, at: Date.now(), goals: r.goals.map(g => ({ t: g.t, side: g.side, conf: g.conf, note: g.note, fine: !!g.fine, unsure: !!g.unsure, gap: !!g.gap })), warnings: r.warnings, moments: moments.filter(x => x.side) };
       await DB.saveMatch(m);
       busy = false;
-      combine(`Gemini listed ${r.goals.length} goal${r.goals.length === 1 ? '' : 's'}: ${r.goals.map(g => clock(g.t) + (g.fine ? '' : '?')).join(', ') || 'none'}${moments.length ? `, plus ${moments.length} other highlights` : ''}.`);
+      combine(`${G.model} listed ${r.goals.length} goal${r.goals.length === 1 ? '' : 's'}: ${r.goals.map(g => clock(g.t) + (g.fine ? '' : '?')).join(', ') || 'none'}${moments.length ? `, plus ${moments.length} other highlights` : ''}.${momNote}`);
     } catch (err) {
       busy = false; if (err.status === 400 || err.status === 401 || err.status === 403) G.models = null;
       render(err.message || 'Gemini did not work');

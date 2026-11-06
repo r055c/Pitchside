@@ -360,7 +360,7 @@ a.dl{display:flex;align-items:center;justify-content:center;gap:8px;text-decorat
 </head>
 <body>
 <div id="app"></div>
-<footer class="ver" id="ver">Version <b id="verTxt">5 Nov 2026, 21:46</b></footer>
+<footer class="ver" id="ver">Version <b id="verTxt">6 Nov 2026, 10:16</b></footer>
 <div id="toast" role="status" aria-live="polite"></div>
 <script>
 const DB=(()=>{
@@ -727,7 +727,7 @@ function isGoalTalk(text) { return GOAL_WORDS.some(r => r.test(text)); }
 function isStrongGoalTalk(text) { return /\bgoal+s?\b|\bin the back of the net\b/i.test(text); }
 
 return {SOURCES,fuse,soundEvents,speechEvents,geminiEvents,GOAL_WORDS,isGoalTalk,isStrongGoalTalk};})();
-const {listModels,uploadVideo,deleteUpload,parseClock,gmmss,findGaps,geminiGoals,geminiMoments}=(()=>{
+const {listModels,classifyError,restingModels,KIND_TEXT,withModels,uploadVideo,deleteUpload,parseClock,gmmss,findGaps,geminiGoals,geminiMoments}=(()=>{
 // Ask Gemini (beta): the AI watches the match video and lists goals (and, optionally, shots, saves, corners, fouls).
 // Pipeline: upload the video once -> pass 1 in 15-minute parts (with the score after each goal) -> look for goals the
 // score says are missing -> take a closer look at each goal for the exact second -> delete the upload.
@@ -767,7 +767,7 @@ async function api(auth, path, { method = 'GET', body, signal, timeoutMs } = {})
   } finally { if (timer) clearTimeout(timer); }
   let text; try { text = await res.text(); } catch (e) { if (timedOut) throw slow(); throw e; }
   let json = null; try { json = text ? JSON.parse(text) : null; } catch (_) {}
-  if (!res.ok) { const err = new Error(friendly(res.status, json, text)); err.status = res.status; err.retryAfter = retryDelay(json); throw err; }
+  if (!res.ok) { const err = new Error(friendly(res.status, json, text)); err.status = res.status; err.retryAfter = retryDelay(json); err.daily = res.status === 429 && /PerDay|per day|daily/i.test(text || ''); throw err; }
   return json;
 }
 
@@ -786,22 +786,69 @@ function friendly(status, json, text) {
 
 // ---- models ----
 async function listModels(auth, { signal } = {}) {
-  const out = []; let token = '';
+  const out = [], all = []; let token = '';
   for (let i = 0; i < 5; i++) {
     const j = await api(auth, '/v1beta/models?pageSize=100' + (token ? '&pageToken=' + encodeURIComponent(token) : ''), { signal });
     for (const m of (j && j.models) || []) {
       const name = String(m.name || '').replace(/^models\//, '');
       if (!/^gemini/.test(name) || !(m.supportedGenerationMethods || []).includes('generateContent')) continue;
-      if (/image|tts|embed|live|audio|robotics|computer|lite|exp-|customtools|learnlm/i.test(name)) continue;
+      if (/image|tts|embed|live|audio|robotics|computer|exp-|customtools|learnlm|omni|nano|banana|transcribe|translate/i.test(name)) continue;
+      all.push({ name, label: m.displayName || name });
+      if (!/flash/i.test(name) || /preview|latest|pro|argon/i.test(name)) continue;   // plain Flash and Flash-Lite only: the ones worth cycling through
       out.push({ name, label: m.displayName || name });
     }
     token = j && j.nextPageToken; if (!token) break;
   }
   const ver = n => { const v = n.match(/gemini-(\d+(?:\.\d+)?)/); return v ? parseFloat(v[1]) : 0; };
-  const score = n => (/flash/.test(n) ? 1000 : /pro/.test(n) ? 500 : 0) + ver(n) * 10 - (/preview|latest/.test(n) ? 60 : 0);
+  const score = n => (/flash/.test(n) ? 1000 : /pro/.test(n) ? 500 : 0) + ver(n) * 10 - (/preview|latest/.test(n) ? 60 : 0) - (/lite/.test(n) ? 5 : 0);
+  if (!out.length) out.push(...all);   // nothing plain-Flash on this key: fall back to anything that can watch video
   out.sort((a, b) => score(b.name) - score(a.name));
   if (!out.length) throw new Error('That works, but I could not find a Gemini model that can watch video on it.');
   return out;
+}
+
+
+// ---- cycling through models when one is busy, out of free requests or gone ----
+const COOL_KEY = 'ps_gemini_cool';
+const readCool = () => { try { return JSON.parse(localStorage.getItem(COOL_KEY) || '{}') || {}; } catch (_) { return {}; } };
+const writeCool = o => { try { localStorage.setItem(COOL_KEY, JSON.stringify(o)); } catch (_) {} };
+function msToPacificMidnight() {   // free daily limits reset at midnight US Pacific time (08:00 in the UK in winter)
+  try { const la = new Date(new Date().toLocaleString('en-US', { timeZone: 'America/Los_Angeles' })); return Math.max(60000, 86400000 - ((la.getHours() * 60 + la.getMinutes()) * 60 + la.getSeconds()) * 1000); } catch (_) { return 6 * 3600000; }
+}
+function classifyError(e) {
+  if (!e || e.name === 'AbortError') return null;
+  if (e.status === 404 || /no longer available|is not found|not supported for generateContent/i.test(e.message || '')) return 'gone';
+  if (e.status === 429) return e.daily ? 'daily' : 'rate';
+  if (e.status >= 500 || e.busy || /overloaded|high demand|unavailable/i.test(e.message || '')) return 'busy';
+  return null;
+}
+function restingModels() {
+  const c = readCool(), now = Date.now(), out = [];
+  for (const [name, v] of Object.entries(c)) if (v && v.until > now) out.push({ name, kind: v.kind, until: v.until });
+  return out;
+}
+const rest = (name, kind) => {
+  const c = readCool(); const ms = { daily: msToPacificMidnight(), busy: 10 * 60000, rate: 2 * 60000, gone: 7 * 86400000 }[kind] || 600000;
+  c[name] = { kind, until: Date.now() + ms }; writeCool(c);
+};
+const KIND_TEXT = { daily: 'out of free requests for today', busy: 'too busy', rate: 'at its per-minute limit', gone: 'no longer available' };
+// run(modelName) is tried on each model in turn. A real error (bad key, bad video) stops straight away.
+async function withModels(names, run, { signal, onSwitch = () => {} } = {}) {
+  const resting = new Set(restingModels().map(x => x.name));
+  let list = names.filter(n => !resting.has(n));
+  if (!list.length) list = names.slice();       // everything is resting: try anyway, a reset may have happened
+  let last = null; const log = [];
+  for (const name of list) {
+    try { return { model: name, result: await run(name) }; }
+    catch (e) {
+      if (signal && signal.aborted) throw e;
+      const kind = classifyError(e); if (!kind) throw e;
+      rest(name, kind); last = e; log.push(`${name}: ${KIND_TEXT[kind]}`);
+      onSwitch(name, kind, list[list.indexOf(name) + 1] || null);
+    }
+  }
+  const err = new Error(`Every model is busy or out of free requests right now (${log.join('; ')}). Try again later. Daily limits reset at 08:00 UK time.`);
+  err.status = last && last.status; err.allFailed = true; throw err;
 }
 
 // ---- upload (resumable) with progress ----
@@ -863,8 +910,8 @@ async function ask(auth, model, file, { a, b, fps, res, text, schema }, { signal
     try { j = await api(auth, `/v1beta/models/${encodeURIComponent(model)}:generateContent`, { method: 'POST', body, signal, timeoutMs: 240000 }); break; }
     catch (e) {
       if (e.timeout && timeouts < 2) { timeouts++; continue; }
-      if (e.timeout) throw new Error('Gemini did not answer (' + label.trim() + ') after three tries of 4 minutes each. Try a different model from the list, or try again later.');
-      if (e.status === 429 && tryN < 7) { const w = e.retryAfter || 45; for (let s = w; s > 0; s--) { onProgress(`Google’s free limit reached, waiting ${s}s then carrying on (${label.trim()})…`); await sleep(1000, signal); } continue; }
+      if (e.timeout) { const te = new Error('Gemini did not answer (' + label.trim() + ') after three tries of 4 minutes each.'); te.busy = true; throw te; }
+      if (e.status === 429 && !e.daily && tryN < 2) { const w = e.retryAfter || 45; for (let s = w; s > 0; s--) { onProgress(`Google’s free limit reached, waiting ${s}s then carrying on (${label.trim()})…`); await sleep(1000, signal); } continue; }
       if (e.status >= 500 && tryN < 3) { await sleep(5000, signal); continue; }
       throw e;
     } finally { clearInterval(tick); }
@@ -1004,7 +1051,7 @@ async function geminiMoments(auth, model, file, { us, them, duration, sideOf = (
   return out.filter((g, i) => !out.slice(0, i).some(h => h.type === g.type && h.side === g.side && Math.abs(h.t - g.t) < 6));
 }
 
-return {listModels,uploadVideo,deleteUpload,parseClock,gmmss,findGaps,geminiGoals,geminiMoments};})();
+return {listModels,classifyError,restingModels,KIND_TEXT,withModels,uploadVideo,deleteUpload,parseClock,gmmss,findGaps,geminiGoals,geminiMoments};})();
 const {mmss,cleanTrack,suggestZones,restarts,findCandidates,parseOutput,getOrt,hasWebGPU,loadBallSession,detectOnce,scanBall}=(()=>{
 // Pitchside ball tracker: runs a football ball detector (an .onnx file) in the browser with ONNX Runtime Web,
 // then turns the ball positions into goal candidates. Needs the hosted version (WebGPU/WASM files are loaded
@@ -2834,8 +2881,9 @@ function findTab(m) {
     sec('gemini', 'Ask Gemini', 'Recommended', gem ? `${gem.goals.length} goal${gem.goals.length === 1 ? '' : 's'}` : '', `
       <p class="note">${gem ? `Done: Gemini found ${gem.goals.length} goal${gem.goals.length === 1 ? '' : 's'} (${esc(gem.model)}).` : `Gemini is Google&rsquo;s AI. It watches the whole match, lists the goals, then takes a closer look at each one. ${GPROXY ? '' : 'Get a free key at <a href="https://aistudio.google.com/apikey" target="_blank" rel="noopener">aistudio.google.com/apikey</a>.'}`}</p>
       ${gem && gem.warnings && gem.warnings.length ? `<ul class="gemw">${gem.warnings.map(w => `<li>${esc(w)}</li>`).join('')}</ul>` : ''}
+      ${(() => { const r = restingModels().filter(x => G.models ? G.models.some(y => y.name === x.name) : true); return r.length ? `<p class="note">Skipped for now: ${r.map(x => `${esc(x.name)} (${KIND_TEXT[x.kind]})`).join(', ')}.</p>` : ''; })()}
       <div class="gem"><input id="gKey" type="password" autocomplete="off" spellcheck="false" placeholder="${GPROXY ? 'Access code (if you were given one)' : 'Paste your Gemini key'}" value="${esc(keyVal)}">
-      ${G.models ? `<select id="gModel">${G.models.map(x => `<option value="${esc(x.name)}" ${x.name === G.model ? 'selected' : ''}>${esc(x.name)}</option>`).join('')}</select>` : ''}
+      ${G.models ? `<label class="fld"><span>Start with this model (it switches to the next one if it is busy or out of free requests)</span><select id="gModel">${G.models.map(x => `<option value="${esc(x.name)}" ${x.name === G.model ? 'selected' : ''}>${esc(x.name)}</option>`).join('')}</select></label>` : ''}
       <label class="chk"><input type="checkbox" id="gOk" ${G.ok ? 'checked' : ''}><span>I&rsquo;m happy for this video to be uploaded to Google with my key. (Google may use free-tier uploads to improve its products, so avoid footage you should not share, such as other people&rsquo;s children.)</span></label>
       <label class="chk"><input type="checkbox" id="gExtra" ${G.extra ? 'checked' : ''}><span>Also look for shots, saves, corners and fouls (slower, and they are guesses to check)</span></label>
       <label class="chk"><input type="checkbox" id="gRem" ${G.rem ? 'checked' : ''}><span>Remember ${GPROXY ? 'the access code' : 'the key'} on this device</span></label>
@@ -2952,13 +3000,22 @@ function findTab(m) {
       setMsg('Uploading the video to Google… 0%');
       up = await uploadVideo(auth, S.file, { signal: ctrl.signal, onProgress: f => setMsg(`Uploading the video to Google… ${Math.round(f * 100)}% (a 200 MB match can take several minutes)`) });
       const sideOf = t => sideFromText(m, t);
-      const r = await geminiGoals(auth, G.model, up, { us: m.us, them: m.them, duration: dur, finalUs: haveFinal ? fa : null, finalThem: haveFinal ? fb : null, sideOf, signal: ctrl.signal, onProgress: t => setMsg(t) });
-      let moments = [];
-      if (G.extra) moments = await geminiMoments(auth, G.model, up, { us: m.us, them: m.them, duration: dur, sideOf, signal: ctrl.signal, onProgress: t => setMsg(t) });
+      const names = [G.model, ...G.models.map(x => x.name).filter(n => n !== G.model)];
+      const onSwitch = (name, kind, next) => setMsg(`${name} is ${KIND_TEXT[kind]}. ${next ? 'Trying ' + next + '…' : 'No other models left to try.'}`);
+      const common = { us: m.us, them: m.them, duration: dur, sideOf, signal: ctrl.signal };
+      const gr = await withModels(names, name => geminiGoals(auth, name, up, { ...common, finalUs: haveFinal ? fa : null, finalThem: haveFinal ? fb : null, onProgress: t => setMsg(`${name}: ${t}`) }), { signal: ctrl.signal, onSwitch });
+      const r = gr.result; G.model = gr.model; lsSet('ps_gemini_model', G.model);
+      let moments = [], momNote = '';
+      if (G.extra) {
+        try {
+          const mr = await withModels([G.model, ...names.filter(n => n !== G.model)], name => geminiMoments(auth, name, up, { ...common, onProgress: t => setMsg(`${name}: ${t}`) }), { signal: ctrl.signal, onSwitch });
+          moments = mr.result;
+        } catch (err) { if (ctrl.signal.aborted) throw err; momNote = ' The shots, saves, corners and fouls could not be checked this time.'; }
+      }
       m.gemini = { model: G.model, at: Date.now(), goals: r.goals.map(g => ({ t: g.t, side: g.side, conf: g.conf, note: g.note, fine: !!g.fine, unsure: !!g.unsure, gap: !!g.gap })), warnings: r.warnings, moments: moments.filter(x => x.side) };
       await DB.saveMatch(m);
       busy = false;
-      combine(`Gemini listed ${r.goals.length} goal${r.goals.length === 1 ? '' : 's'}: ${r.goals.map(g => clock(g.t) + (g.fine ? '' : '?')).join(', ') || 'none'}${moments.length ? `, plus ${moments.length} other highlights` : ''}.`);
+      combine(`${G.model} listed ${r.goals.length} goal${r.goals.length === 1 ? '' : 's'}: ${r.goals.map(g => clock(g.t) + (g.fine ? '' : '?')).join(', ') || 'none'}${moments.length ? `, plus ${moments.length} other highlights` : ''}.${momNote}`);
     } catch (err) {
       busy = false; if (err.status === 400 || err.status === 401 || err.status === 403) G.models = null;
       render(err.message || 'Gemini did not work');

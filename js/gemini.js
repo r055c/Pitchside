@@ -37,7 +37,7 @@ async function api(auth, path, { method = 'GET', body, signal, timeoutMs } = {})
   } finally { if (timer) clearTimeout(timer); }
   let text; try { text = await res.text(); } catch (e) { if (timedOut) throw slow(); throw e; }
   let json = null; try { json = text ? JSON.parse(text) : null; } catch (_) {}
-  if (!res.ok) { const err = new Error(friendly(res.status, json, text)); err.status = res.status; err.retryAfter = retryDelay(json); throw err; }
+  if (!res.ok) { const err = new Error(friendly(res.status, json, text)); err.status = res.status; err.retryAfter = retryDelay(json); err.daily = res.status === 429 && /PerDay|per day|daily/i.test(text || ''); throw err; }
   return json;
 }
 
@@ -56,22 +56,69 @@ function friendly(status, json, text) {
 
 // ---- models ----
 export async function listModels(auth, { signal } = {}) {
-  const out = []; let token = '';
+  const out = [], all = []; let token = '';
   for (let i = 0; i < 5; i++) {
     const j = await api(auth, '/v1beta/models?pageSize=100' + (token ? '&pageToken=' + encodeURIComponent(token) : ''), { signal });
     for (const m of (j && j.models) || []) {
       const name = String(m.name || '').replace(/^models\//, '');
       if (!/^gemini/.test(name) || !(m.supportedGenerationMethods || []).includes('generateContent')) continue;
-      if (/image|tts|embed|live|audio|robotics|computer|lite|exp-|customtools|learnlm/i.test(name)) continue;
+      if (/image|tts|embed|live|audio|robotics|computer|exp-|customtools|learnlm|omni|nano|banana|transcribe|translate/i.test(name)) continue;
+      all.push({ name, label: m.displayName || name });
+      if (!/flash/i.test(name) || /preview|latest|pro|argon/i.test(name)) continue;   // plain Flash and Flash-Lite only: the ones worth cycling through
       out.push({ name, label: m.displayName || name });
     }
     token = j && j.nextPageToken; if (!token) break;
   }
   const ver = n => { const v = n.match(/gemini-(\d+(?:\.\d+)?)/); return v ? parseFloat(v[1]) : 0; };
-  const score = n => (/flash/.test(n) ? 1000 : /pro/.test(n) ? 500 : 0) + ver(n) * 10 - (/preview|latest/.test(n) ? 60 : 0);
+  const score = n => (/flash/.test(n) ? 1000 : /pro/.test(n) ? 500 : 0) + ver(n) * 10 - (/preview|latest/.test(n) ? 60 : 0) - (/lite/.test(n) ? 5 : 0);
+  if (!out.length) out.push(...all);   // nothing plain-Flash on this key: fall back to anything that can watch video
   out.sort((a, b) => score(b.name) - score(a.name));
   if (!out.length) throw new Error('That works, but I could not find a Gemini model that can watch video on it.');
   return out;
+}
+
+
+// ---- cycling through models when one is busy, out of free requests or gone ----
+const COOL_KEY = 'ps_gemini_cool';
+const readCool = () => { try { return JSON.parse(localStorage.getItem(COOL_KEY) || '{}') || {}; } catch (_) { return {}; } };
+const writeCool = o => { try { localStorage.setItem(COOL_KEY, JSON.stringify(o)); } catch (_) {} };
+function msToPacificMidnight() {   // free daily limits reset at midnight US Pacific time (08:00 in the UK in winter)
+  try { const la = new Date(new Date().toLocaleString('en-US', { timeZone: 'America/Los_Angeles' })); return Math.max(60000, 86400000 - ((la.getHours() * 60 + la.getMinutes()) * 60 + la.getSeconds()) * 1000); } catch (_) { return 6 * 3600000; }
+}
+export function classifyError(e) {
+  if (!e || e.name === 'AbortError') return null;
+  if (e.status === 404 || /no longer available|is not found|not supported for generateContent/i.test(e.message || '')) return 'gone';
+  if (e.status === 429) return e.daily ? 'daily' : 'rate';
+  if (e.status >= 500 || e.busy || /overloaded|high demand|unavailable/i.test(e.message || '')) return 'busy';
+  return null;
+}
+export function restingModels() {
+  const c = readCool(), now = Date.now(), out = [];
+  for (const [name, v] of Object.entries(c)) if (v && v.until > now) out.push({ name, kind: v.kind, until: v.until });
+  return out;
+}
+const rest = (name, kind) => {
+  const c = readCool(); const ms = { daily: msToPacificMidnight(), busy: 10 * 60000, rate: 2 * 60000, gone: 7 * 86400000 }[kind] || 600000;
+  c[name] = { kind, until: Date.now() + ms }; writeCool(c);
+};
+export const KIND_TEXT = { daily: 'out of free requests for today', busy: 'too busy', rate: 'at its per-minute limit', gone: 'no longer available' };
+// run(modelName) is tried on each model in turn. A real error (bad key, bad video) stops straight away.
+export async function withModels(names, run, { signal, onSwitch = () => {} } = {}) {
+  const resting = new Set(restingModels().map(x => x.name));
+  let list = names.filter(n => !resting.has(n));
+  if (!list.length) list = names.slice();       // everything is resting: try anyway, a reset may have happened
+  let last = null; const log = [];
+  for (const name of list) {
+    try { return { model: name, result: await run(name) }; }
+    catch (e) {
+      if (signal && signal.aborted) throw e;
+      const kind = classifyError(e); if (!kind) throw e;
+      rest(name, kind); last = e; log.push(`${name}: ${KIND_TEXT[kind]}`);
+      onSwitch(name, kind, list[list.indexOf(name) + 1] || null);
+    }
+  }
+  const err = new Error(`Every model is busy or out of free requests right now (${log.join('; ')}). Try again later. Daily limits reset at 08:00 UK time.`);
+  err.status = last && last.status; err.allFailed = true; throw err;
 }
 
 // ---- upload (resumable) with progress ----
@@ -133,8 +180,8 @@ async function ask(auth, model, file, { a, b, fps, res, text, schema }, { signal
     try { j = await api(auth, `/v1beta/models/${encodeURIComponent(model)}:generateContent`, { method: 'POST', body, signal, timeoutMs: 240000 }); break; }
     catch (e) {
       if (e.timeout && timeouts < 2) { timeouts++; continue; }
-      if (e.timeout) throw new Error('Gemini did not answer (' + label.trim() + ') after three tries of 4 minutes each. Try a different model from the list, or try again later.');
-      if (e.status === 429 && tryN < 7) { const w = e.retryAfter || 45; for (let s = w; s > 0; s--) { onProgress(`Google’s free limit reached, waiting ${s}s then carrying on (${label.trim()})…`); await sleep(1000, signal); } continue; }
+      if (e.timeout) { const te = new Error('Gemini did not answer (' + label.trim() + ') after three tries of 4 minutes each.'); te.busy = true; throw te; }
+      if (e.status === 429 && !e.daily && tryN < 2) { const w = e.retryAfter || 45; for (let s = w; s > 0; s--) { onProgress(`Google’s free limit reached, waiting ${s}s then carrying on (${label.trim()})…`); await sleep(1000, signal); } continue; }
       if (e.status >= 500 && tryN < 3) { await sleep(5000, signal); continue; }
       throw e;
     } finally { clearInterval(tick); }
