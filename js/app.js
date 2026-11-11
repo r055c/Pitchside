@@ -851,6 +851,20 @@ function evidenceFor(m, n) {
   if (m.gemini) { const ge = geminiEvents(m.gemini); ev.push(...ge); notes.gemini = ge.length; }
   return { ev, notes };
 }
+function friendlyError(err, fallback) {
+  const t = (err && err.message) || '', st = err && err.status;
+  const has = re => re.test(t);
+  if (has(/Could not reach/i)) return { head: 'No connection', detail: 'Check the internet connection, or whether this network blocks Google.' };
+  if (has(/no Gemini key/i)) return { head: 'The server has no Gemini key yet', detail: 'Add GEMINI_API_KEY in Vercel and redeploy.' };
+  if (st === 401 || has(/access code/i)) return { head: 'Wrong access code', detail: 'Check the code and try again.' };
+  if (st === 413 || has(/too big/i)) return { head: 'That video is too big', detail: 'Try a smaller or lower-quality copy.' };
+  if (st === 404 || has(/NOT_FOUND|could not be found/i)) return { head: "Couldn't find the Gemini service", detail: 'The server part of Pitchside is not set up or is still deploying. Nothing was uploaded.' };
+  if (st === 429 || has(/quota|rate limit|RESOURCE_EXHAUSTED/i)) return { head: 'Gemini is at its limit', detail: 'Wait a minute, or until the daily limit resets, then search again.' };
+  if (st === 403) return { head: 'Gemini refused the request', detail: 'The key may not be allowed to do this, or has been switched off.' };
+  if (st === 400) return { head: 'Gemini rejected the request', detail: 'Nothing was changed. The details below say why.' };
+  if (st >= 500) return { head: 'Gemini had a problem', detail: 'It is usually temporary, so try again in a minute.' };
+  return { head: fallback || 'Something went wrong', detail: t && t !== fallback ? t : '' };
+}
 const G = { key: lsGet('ps_gemini_key', ''), pass: lsGet('ps_gemini_pass', ''), rem: !!(lsGet('ps_gemini_key', '') || lsGet('ps_gemini_pass', '')), ok: false, extra: false, models: null, model: '' };
 // On a host with the Cloudflare Worker (worker/gemini-proxy.js) set <meta name="pitchside-gemini-proxy" content="/api/gemini"> in index.html:
 // the key then stays on the server and people only enter an access code (or nothing).
@@ -860,11 +874,11 @@ const gAuth = () => (GPROXY ? { proxy: GPROXY, pass: G.pass } : G.key);
 // ------------------------------------------------------------ step 2: find highlights
 S.open = { gemini: true };
 function findTab(m) {
-  let ctrl = null, picks = new Set(), cands = [], busy = false, msg = '';
+  let ctrl = null, picks = new Set(), cands = [], busy = false, msg = '', bk = '', braw = '';
   const typed = [m.finalUs != null ? String(m.finalUs) : '', m.finalThem != null ? String(m.finalThem) : ''];
   const top = `<div class="fpTop"><div class="fs"><label>${esc(m.us)}<input id="sfUs" type="number" inputmode="numeric" min="0" max="30" value="${typed[0]}"></label>
       <span class="dash">&ndash;</span><label>${esc(m.them)}<input id="sfThem" type="number" inputmode="numeric" min="0" max="30" value="${typed[1]}"></label></div>
-      <small>Final score (optional). It makes the result much better.</small></div>`;
+      <small>Final score (optional). It makes the result much better.</small><div id="sfBan"></div></div>`;
   shell(m, 'find', playerHtml(m), `<div class="fp">${top}<div class="fpScroll" id="fpScroll"></div><div class="fpBot" id="fpBot"></div></div>`);
   wirePlayer(m, { onMark: id => { S.sel = id; go(`#/match/${m.id}/review`); } });
   const saveFinal = () => {
@@ -917,20 +931,40 @@ function findTab(m) {
       <button class="ghost wide" id="addGoals">Add these goals</button>`);
   };
   const hasMoms = () => !!(m.gemini && m.gemini.moments && m.gemini.moments.length);
-  const render = (text) => {
-    if (text != null) msg = text;
+  const render = (text, k, rawText) => {
+    if (text != null) { msg = text; bk = text ? (k || (busy ? 'run' : inferKind(text))) : ''; braw = rawText || ''; }
     const sc = $('#fpScroll'), st = sc.scrollTop;
     const gt = $('#goalTimes'), goalTxt = gt ? gt.value : '';
     sc.innerHTML = bodyHtml();
     sc.scrollTop = st; if ($('#goalTimes')) $('#goalTimes').value = goalTxt;
-    $('#fpBot').innerHTML = `<p class="note" id="sfMsg">${esc(msg)}</p>
-      <div class="fpBtns">${busy ? '<button class="ghost" id="sfStop">Stop</button>' : `<button class="ghost" id="sfGo">${cands.length ? 'Search again' : 'Search for highlights'}</button>`}
+    $('#fpBot').innerHTML = `<div class="fpBtns">${busy ? '<button class="ghost" id="sfStop">Stop</button>' : `<button class="ghost" id="sfGo">${cands.length ? 'Search again' : 'Search for highlights'}</button>`}
       <button class="primary" id="sfAdd" ${cands.length || hasMoms() ? '' : 'hidden'}></button></div>`;
     $$('details.sec', sc).forEach(d => d.ontoggle = () => { S.open[d.dataset.k] = d.open; });
     wireSec(); if (cands.length || hasMoms()) drawCands();
+    paint();
   };
   S.refresh = () => render();
-  const setMsg = t => { msg = t; const e = $('#sfMsg'); if (e) e.textContent = t; };
+  const inferKind = t => /^(Done|Stopped|Forgotten|Analysis imported)/.test(t) ? 'ok'
+    : /could not|couldn.t|did not work|failed|Paste your|Tick the|needs Chrome|no evidence|no goals to find|^Attach/i.test(t) ? 'warn'
+    : /listed|Used:|0–0/.test(t) ? 'ok' : 'info';
+  const fail = (err, fallback) => { const f = friendlyError(err, fallback); bhead = f.head; render(f.head + ' ' + f.detail, 'err', err && err.message || ''); };
+  let bhead = '';
+  const paint = () => {
+    const b = $('#sfBan'); if (!b) return;
+    if (!msg) { b.innerHTML = ''; return; }
+    let head = msg, detail = '';
+    if (bk === 'err' && bhead && msg.startsWith(bhead)) { head = bhead; detail = msg.slice(bhead.length).trim(); }
+    else { const i = msg.search(/[.!?]\s/); if (i > 0 && i < msg.length - 2) { head = msg.slice(0, i + 1); detail = msg.slice(i + 2); } }
+    if (bk === 'run' && !detail) detail = 'Keep this tab open until it finishes.';
+    const pc = bk === 'run' ? /(\d{1,3})%/.exec(msg) : null;
+    const icon = { err: '!', warn: '!', run: '', ok: '✓', info: 'i' }[bk] || 'i';
+    b.innerHTML = `<div class="ban ${bk}" role="status" aria-live="polite"><div class="ic${bk === 'run' ? ' spin' : ''}">${icon}</div>
+      <div class="bt" id="sfMsg"><b>${esc(head)}</b>${detail ? `<span> ${esc(detail)}</span>` : ''}${pc ? `<div class="bbar"><i style="width:${Math.min(100, +pc[1])}%"></i></div>` : ''}
+      ${braw && braw !== msg ? `<details><summary>Show details</summary><code>${esc(braw)}</code></details>` : ''}</div>
+      ${bk === 'run' ? '' : '<button class="x" aria-label="Dismiss" id="sfBanX">✕</button>'}</div>`;
+    const x = $('#sfBanX'); if (x) x.onclick = () => { msg = ''; bk = ''; paint(); };
+  };
+  const setMsg = t => { msg = t; if (!busy) bk = 'warn'; braw = ''; paint(); };
   const eta = () => { const e = $('#eta'), d = m.video && m.video.duration; if (e) e.textContent = d ? `About ${Math.max(1, Math.ceil(d / S.rate / 60))} min` : ''; };
   const wireSec = () => {
     const on = (id, fn) => { const e = $('#' + id); if (e) e.onclick = fn; };
@@ -972,7 +1006,7 @@ function findTab(m) {
         render(err.message.replace('NEEDFILE: ', ''));
         const sf = $('#sfSound'); sf.textContent = 'Choose yamnet.onnx';
         sf.onclick = () => { const i = document.createElement('input'); i.type = 'file'; i.accept = '.onnx'; i.onchange = async () => { if (i.files[0]) runSound(await i.files[0].arrayBuffer()); }; i.click(); };
-      } else render(err.message || 'The sound scan failed');
+      } else fail(err, 'The sound scan failed');
     }
   }
   async function runSpeech() {
@@ -982,7 +1016,7 @@ function findTab(m) {
       const r = await scanSpeech(S.file, S.asr, { signal: ctrl.signal, onProgress: p => setMsg(`Listening for words… ${Math.round(p.frac * 100)}% · ${p.hits} mention${p.hits === 1 ? '' : 's'} of goals so far`) });
       if (!ctrl.signal.aborted) { m.speech = { words: r.words, hits: r.hits }; await DB.saveMatch(m); }
       busy = false; render(ctrl.signal.aborted ? 'Stopped.' : (r.words < 30 ? 'Done, but hardly any speech was heard, so this clue will not help on this recording.' : 'Done.'));
-    } catch (err) { busy = false; S.asr = null; render(err.message || 'The speech scan failed'); }
+    } catch (err) { busy = false; S.asr = null; fail(err, 'The speech scan failed'); }
   }
   async function runGemini() {
     if (!haveFile(m)) return toast('Attach the match video first');
@@ -1019,7 +1053,7 @@ function findTab(m) {
       combine(`${G.model} listed ${r.goals.length} goal${r.goals.length === 1 ? '' : 's'}: ${r.goals.map(g => clock(g.t) + (g.fine ? '' : '?')).join(', ') || 'none'}${moments.length ? `, plus ${moments.length} other highlights` : ''}.${momNote}`);
     } catch (err) {
       busy = false; if (err.status === 400 || err.status === 401 || err.status === 403) G.models = null;
-      render(err.message || 'Gemini did not work');
+      fail(err, 'Gemini did not work');
     } finally { if (up) deleteUpload(auth, up.name); }
   }
   function combine(prefix) {

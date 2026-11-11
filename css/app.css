@@ -274,6 +274,22 @@ a.dl{display:flex;align-items:center;justify-content:center;gap:8px;text-decorat
 .fpScroll{flex:1;overflow:auto;padding:10px 16px}
 .fpBot{padding:10px 16px 14px;border-top:1px solid var(--line);background:var(--surface)}
 .fpBot .note{margin:0 0 8px;min-height:18px}
+.ban{display:flex;gap:10px;align-items:flex-start;padding:11px 12px;border-radius:12px;border:1px solid;margin-top:4px;font-size:14px;line-height:1.35}
+.ban .ic{width:24px;height:24px;border-radius:50%;flex:none;display:grid;place-items:center;color:#fff;font-weight:800;font-size:14px}
+.ban .bt{flex:1;min-width:0}.ban .bt b{display:block}.ban .bt span{color:var(--muted);font-size:13px}
+.ban .x{background:none;border:0;color:var(--muted);font-size:15px;padding:0 2px;cursor:pointer;flex:none}
+.ban details{margin-top:6px;font-size:12px;color:var(--muted)}.ban summary{cursor:pointer;text-decoration:underline}
+.ban code{display:block;margin-top:4px;white-space:pre-wrap;word-break:break-word;font-size:12px}
+.ban.err{background:#FDECEA;border-color:#F3B8B0;color:#3a1410}.ban.err .ic{background:#C8382A}
+.ban.warn{background:#FFF6E0;border-color:#F0D58A;color:#3a2e0a}.ban.warn .ic{background:#D69A0B}
+.ban.run{background:#EAF2FB;border-color:#B6D0EE;color:#10243a}.ban.run .ic{background:#2B6CB0}
+.ban.ok{background:#E8F5EC;border-color:#A9D6B8;color:#10301c}.ban.ok .ic{background:#1F8A4C}
+.ban.info{background:var(--surface);border-color:var(--line)}.ban.info .ic{background:var(--muted)}
+.ban.err .bt span,.ban.warn .bt span,.ban.run .bt span,.ban.ok .bt span{color:inherit;opacity:.8}
+.ban .bbar{height:6px;background:#CFE0F4;border-radius:4px;margin-top:7px;overflow:hidden}.ban .bbar i{display:block;height:100%;background:#2B6CB0;transition:width .3s}
+.ban .ic.spin{border:3px solid #fff;border-top-color:transparent;background:transparent;border-color:#2B6CB0;border-top-color:#B6D0EE;animation:bspin 1s linear infinite;font-size:0}
+@keyframes bspin{to{transform:rotate(360deg)}}
+@media(prefers-color-scheme:dark){.ban.err{background:#3a1b18;border-color:#7a3a33;color:#fbe3df}.ban.warn{background:#3a3014;border-color:#76651f;color:#fbefc7}.ban.run{background:#16283a;border-color:#2e4f73;color:#dbe9f8}.ban.ok{background:#14301f;border-color:#2c6a46;color:#d9f1e2}}
 .fpBtns{display:flex;gap:8px}.fpBtns>*{flex:1}
 .sec{border-bottom:1px solid var(--line)}
 .sec summary{display:flex;align-items:center;gap:8px;min-height:52px;cursor:pointer;list-style:none;font-weight:700}
