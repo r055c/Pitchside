@@ -20,11 +20,14 @@ const json = (o, status) => new Response(JSON.stringify(o), { status, headers: {
 export default async function handler(request) {
   const env = { GEMINI_API_KEY: process.env.GEMINI_API_KEY, PASSCODE: process.env.PASSCODE };
   const url = new URL(request.url);
-  if (!url.pathname.startsWith(PREFIX + '/')) return json({ error: { message: 'Not found' } }, 404);
+  // vercel.json rewrites /api/gemini/<path> to /api/gemini?__p=/<path>, so read the real path from there (or from the URL itself).
+  const rewritten = url.searchParams.get('__p');
+  let path = rewritten != null ? rewritten : (url.pathname.startsWith(PREFIX + '/') ? url.pathname.slice(PREFIX.length) : '');
+  if (!path.startsWith('/')) return json({ error: { message: 'Not found' } }, 404);
+  url.searchParams.delete('__p');
   if (!env.GEMINI_API_KEY) return json({ error: { message: 'The server has no Gemini key set up yet.' } }, 500);
   if (env.PASSCODE && !same(request.headers.get('X-Pitchside-Pass') || '', env.PASSCODE)) return json({ error: { message: 'Wrong or missing access code.' } }, 401);
 
-  const path = url.pathname.slice(PREFIX.length);
   if (!ALLOWED.some(r => r.test(path))) return json({ error: { message: 'That address is not allowed.' } }, 403);
   if (!['GET', 'POST', 'DELETE'].includes(request.method)) return json({ error: { message: 'Method not allowed.' } }, 405);
   if (path === '/upload/v1beta/files' && Number(request.headers.get('X-Goog-Upload-Header-Content-Length') || 0) > MAX_UPLOAD_BYTES) return json({ error: { message: 'That video is too big.' } }, 413);
