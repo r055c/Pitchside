@@ -13,3 +13,6 @@ With that meta tag the Ask Gemini box asks for the access code instead of a key.
 How the 200 MB video gets there: the Worker only handles small requests. Starting an upload goes through it, and Google answers with a one-off upload address, so the browser sends the video straight to Google. The key is never in the browser.
 
 Never put the key in the repository or the page code. Google disables keys found in public repositories.
+
+## On Vercel instead
+`api/gemini/[...path].js` is the same proxy as a Vercel Edge Function, so no Worker is needed. In Vercel, open the project, then Settings > Environment Variables, and add `GEMINI_API_KEY` (your key) and `PASSCODE` (any code you choose). Then redeploy. `index.html` already carries the `pitchside-gemini-proxy` meta tag, so the hosted app asks for the access code instead of a key. The single-file `Pitchside.html` leaves the tag out, because it has no server to go through.

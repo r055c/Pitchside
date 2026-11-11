@@ -29,6 +29,7 @@ js+="".join(wrap(p) for p in ['js/export.js','js/fuse.js','js/gemini.js','js/bal
 js+=re.sub(r"^import .*$\n",'',r('js/app.js'),flags=re.M)
 js=js.replace("</script>","<\\/script>")
 h=r('index.html')
+h=re.sub(r'<meta name="pitchside-gemini-proxy"[^>]*>\n?','',h)   # the single file has no server to proxy through
 h=re.sub(r'<link rel="manifest"[^>]*>\n?','',h)
 h=re.sub(r'<link rel="apple-touch-icon"[^>]*>\n?','',h)
 h=re.sub(r'<link rel="icon"[^>]*>\n?','',h)
