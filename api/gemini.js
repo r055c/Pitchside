@@ -25,6 +25,7 @@ export default async function handler(request) {
   let path = rewritten != null ? rewritten : (url.pathname.startsWith(PREFIX + '/') ? url.pathname.slice(PREFIX.length) : '');
   if (!path.startsWith('/')) return json({ error: { message: 'Not found' } }, 404);
   url.searchParams.delete('__p');
+  if (rewritten != null) url.searchParams.delete('path');   // Vercel also adds the rewrite's :path parameter to the query; Google rejects it
   if (!env.GEMINI_API_KEY) return json({ error: { message: 'The server has no Gemini key set up yet.' } }, 500);
   if (env.PASSCODE && !same(request.headers.get('X-Pitchside-Pass') || '', env.PASSCODE)) return json({ error: { message: 'Wrong or missing access code.' } }, 401);
 
